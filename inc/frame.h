@@ -12,7 +12,7 @@
 #include <vector>
 
 // modify if necessary
-#define INTERFACE_NAME "eno1"
+#define INTERFACE_NAME "lo"
 #define TIMEOUT_SECONDS 5
 #define START_MARKER 0x7E // 01111110
 

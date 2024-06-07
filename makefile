@@ -35,5 +35,5 @@ client: $(CLIENT_OBJFILES) $(LIBS_OBJFILES)
 
 # Clean up generated files
 clean:
-	-rm -rf server client $(SERVER_OBJFILES) $(CLIENT_OBJFILES) $(FRAME_OBJFILE)
+	-rm -rf server client $(SERVER_OBJFILES) $(CLIENT_OBJFILES) $(LIBS_OBJFILES)
 
