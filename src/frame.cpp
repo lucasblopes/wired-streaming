@@ -11,6 +11,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstring>
+#include <iomanip>
 #include <iostream>
 #include <mutex>
 #include <queue>
@@ -142,7 +143,8 @@ bool receive_frame_with_timeout(int sockfd, struct sockaddr_ll &addr, Frame &fra
 				if (crc == response->crc) {
 					// CRC is correct, copies the buffer to the frame structure
 					memcpy(&frame, buffer, sizeof(Frame));
-					cout << "Valid response received: " << response->data << endl;
+					cout << "frame " << hex << setw(2) << setfill('0') << (int)frame.sequence
+						 << " received : " << response->data << endl;
 					return true;
 				} else {
 					cerr << "CRC check failed" << endl;

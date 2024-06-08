@@ -57,7 +57,7 @@ int main() {
 			unsigned char crc = calculate_crc(*response);
 			if (crc == response->crc) {
 				cout << "Received frame " << hex << setw(2) << setfill('0')
-					 << (int)response->sequence << " with data: " << response->data << endl;
+					 << (int)response->sequence << " : " << response->data << endl;
 
 				// Send ACK
 				Frame ack;

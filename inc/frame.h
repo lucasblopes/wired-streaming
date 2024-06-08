@@ -14,6 +14,7 @@
 // modify if necessary
 #define INTERFACE_NAME "eno1"
 #define TIMEOUT_SECONDS 5
+#define WINDOW_SIZE 5
 #define START_MARKER 0x7E  // 01111110
 
 struct Frame {
