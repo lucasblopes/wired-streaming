@@ -16,7 +16,6 @@ using namespace std;
 
 int main() {
 	int sockfd;
-	struct sockaddr_ll client_addr;
 
 	sockfd = create_raw_socket();
 
@@ -44,39 +43,32 @@ int main() {
 
 	socket_config(sockfd, TIMEOUT_SECONDS, interface_index);
 
+	ofstream output_file("received_file.tar.gz", ios::binary);
+	if (!output_file) {
+		cerr << "Failed to open output file." << endl;
+		return 1;
+	}
+
+	uint8_t expected_sequence = 0;
+
 	while (true) {
-		socklen_t addr_len = sizeof(client_addr);
-		char buffer[sizeof(Frame)] = {0};
+		Frame frame;
+		struct sockaddr_ll client_addr;
 
-		ssize_t len =
-			recvfrom(sockfd, &buffer, sizeof(Frame), 0, (struct sockaddr *)&client_addr, &addr_len);
-		/* Frame *response = reinterpret_cast<Frame *>(buffer); */
-		Frame *response = reinterpret_cast<Frame *>(buffer);
-		if (len > 0 && response->start_marker == 0x7E) {
-			// Check CRC
-			unsigned char crc = calculate_crc(*response);
-			if (crc == response->crc) {
-				cout << "Received frame " << hex << setw(2) << setfill('0')
-					 << (int)response->sequence << " : " << response->data << endl;
-
-				// Send ACK
-				Frame ack;
-				ack.start_marker = 0x7E;
-				ack.length = 3;
-				ack.sequence = response->sequence;
-				ack.type = 0;
-				strcpy((char *)ack.data, "ACK");
-				ack.crc = calculate_crc(ack);
-
-				ssize_t sent_bytes = sendto(sockfd, &ack, sizeof(Frame), 0,
-											(struct sockaddr *)&client_addr, sizeof(client_addr));
-				if (sent_bytes == -1) {
-					cerr << "Failed to send ACK: " << strerror(errno) << endl;
-				} else {
-					cout << "Sent ACK successfully!" << endl;
-				}
+		if (receive_frame_with_timeout(sockfd, client_addr, frame, TIMEOUT_SECONDS)) {
+			if (frame.type == TYPE_END_TX) {
+				output_file.close();
+				cout << "Received end of transmission frame." << endl;
+			}
+			if (frame.sequence == expected_sequence) {
+				/* cout << "Received frame " << (int)frame.sequence << " : " << frame.data << endl;
+				 */
+				cout << "Received frame " << (int)frame.sequence << endl;
+				output_file.write((char *)frame.data, frame.length);
+				send_ack(sockfd, client_addr, expected_sequence);
+				expected_sequence = (expected_sequence + 1) % WINDOW_SIZE;
 			} else {
-				cerr << "CRC check failed" << endl;
+				send_nack(sockfd, client_addr, expected_sequence);
 			}
 		}
 	}

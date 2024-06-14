@@ -11,11 +11,24 @@
 #include <iostream>
 #include <vector>
 
+using namespace std;
+
 // modify if necessary
 #define INTERFACE_NAME "eno1"
 #define TIMEOUT_SECONDS 5
 #define WINDOW_SIZE 5
-#define START_MARKER 0x7E  // 01111110
+#define FRAME_DATA_SIZE 63
+
+#define START_MARKER 0x7E		   // 01111110
+#define TYPE_ACK 0x00			   // 00000
+#define TYPE_NACK 0x01			   // 00001
+#define TYPE_LIST 0x0A			   // 01010
+#define TYPE_DOWNLOAD 0x0B		   // 01011
+#define TYPE_SHOWS_ON_SCREEN 0x10  // 10000
+#define TYPE_FILL_DESCRIPTOR 0x11  // 10001
+#define TYPE_DATA 0x12			   // 10010
+#define TYPE_END_TX 0x1E		   // 11110
+#define TYPE_ERROR 0x1F			   // 11111
 
 struct Frame {
 	uint8_t start_marker;
@@ -37,5 +50,11 @@ bool send_frame_with_timeout(int sockfd, Frame &frame, struct sockaddr_ll &addr,
 
 bool receive_frame_with_timeout(int sockfd, struct sockaddr_ll &addr, Frame &frame,
 								int timeout_seconds);
+
+void send_ack(int sockfd, struct sockaddr_ll &client_addr, uint8_t sequence);
+
+void send_nack(int sockfd, struct sockaddr_ll &client_addr, uint8_t sequence);
+
+void send_file(int sockfd, struct sockaddr_ll &server_addr, ifstream &file);
 
 #endif
