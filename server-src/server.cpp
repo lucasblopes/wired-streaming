@@ -43,7 +43,7 @@ int main() {
 
 	socket_config(sockfd, TIMEOUT_SECONDS, interface_index);
 
-	ofstream output_file("received_file.tar.gz", ios::binary);
+	ofstream output_file("received_file.mp4", ios::binary);
 	if (!output_file) {
 		cerr << "Failed to open output file." << endl;
 		return 1;
@@ -55,20 +55,18 @@ int main() {
 		Frame frame;
 		struct sockaddr_ll client_addr;
 
-		if (receive_frame_with_timeout(sockfd, client_addr, frame, TIMEOUT_SECONDS)) {
-			if (frame.type == TYPE_END_TX) {
-				output_file.close();
-				cout << "Received end of transmission frame." << endl;
-			}
+		if (receive_frame_and_send_ack(sockfd, client_addr, frame, TIMEOUT_SECONDS)) {
 			if (frame.sequence == expected_sequence) {
-				/* cout << "Received frame " << (int)frame.sequence << " : " << frame.data << endl;
-				 */
-				cout << "Received frame " << (int)frame.sequence << endl;
-				output_file.write((char *)frame.data, frame.length);
-				send_ack(sockfd, client_addr, expected_sequence);
+				if (frame.type == TYPE_END_TX) {
+					output_file.close();
+					cout << "Received end of transmission frame." << endl;
+					break;
+				} else if (frame.type == TYPE_DATA) {
+					output_file.write((char *)frame.data, frame.length);
+				} else {
+					send_nack(sockfd, client_addr, expected_sequence);
+				}
 				expected_sequence = (expected_sequence + 1) % WINDOW_SIZE;
-			} else {
-				send_nack(sockfd, client_addr, expected_sequence);
 			}
 		}
 	}

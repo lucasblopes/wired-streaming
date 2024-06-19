@@ -45,13 +45,18 @@ uint8_t calculate_crc(const Frame &frame);
 
 void socket_config(int sockfd, int timeout_seconds, int interface_index);
 
-bool send_frame_with_timeout(int sockfd, Frame &frame, struct sockaddr_ll &addr, int addrlen,
-							 int timeout_seconds);
+bool send_frame_and_receive_ack(int sockfd, Frame &frame, struct sockaddr_ll &addr,
+								int timeout_seconds);
 
 bool receive_frame_with_timeout(int sockfd, struct sockaddr_ll &addr, Frame &frame,
 								int timeout_seconds);
 
+bool receive_frame_and_send_ack(int sockfd, struct sockaddr_ll &addr, Frame &frame,
+								int timeout_seconds);
+
 void send_ack(int sockfd, struct sockaddr_ll &client_addr, uint8_t sequence);
+
+bool receive_ack(int sockfd, struct sockaddr_ll &addr, uint8_t &ack_sequence, int timeout_seconds);
 
 void send_nack(int sockfd, struct sockaddr_ll &client_addr, uint8_t sequence);
 
