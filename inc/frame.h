@@ -39,6 +39,8 @@ struct Frame {
 	uint8_t crc;
 };
 
+string translate_frame_type(uint8_t type);
+
 int create_raw_socket();
 
 uint8_t calculate_crc(const Frame &frame);

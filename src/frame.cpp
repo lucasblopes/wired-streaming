@@ -20,6 +20,31 @@
 
 using namespace std;
 
+string translate_frame_type(uint8_t type) {
+	switch (type) {
+		case TYPE_ACK:
+			return "ACK";
+		case TYPE_NACK:
+			return "NACK";
+		case TYPE_LIST:
+			return "LIST";
+		case TYPE_DOWNLOAD:
+			return "DOWNLOAD";
+		case TYPE_SHOWS_ON_SCREEN:
+			return "SHOWS ON SCREEN";
+		case TYPE_FILL_DESCRIPTOR:
+			return "FILL DESCRIPTOR";
+		case TYPE_DATA:
+			return "DATA";
+		case TYPE_END_TX:
+			return "END TX";
+		case TYPE_ERROR:
+			return "ERROR";
+		default:
+			return "UNKNOWN";
+	}
+}
+
 int create_raw_socket() {
 	int sockfd;
 	if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1) {
@@ -68,10 +93,45 @@ void socket_config(int sockfd, int timeout_seconds, int interface_index) {
 bool send_frame_and_receive_ack(int sockfd, Frame &frame, struct sockaddr_ll &addr,
 								int timeout_seconds) {
 	socklen_t addrlen = sizeof(addr);
-	sendto(sockfd, &frame, sizeof(Frame), 0, (struct sockaddr *)&addr, addrlen);
-	cout << "Sent frame " << (int)frame.sequence << " (" << (int)frame.type << ")" << endl;
-	uint8_t sequence = frame.sequence;
-	return (receive_ack(sockfd, addr, sequence, timeout_seconds));
+	auto start = chrono::steady_clock::now();
+	char buffer[sizeof(Frame)] = {0};
+
+	while (true) {
+		sendto(sockfd, &frame, sizeof(Frame), 0, (struct sockaddr *)&addr, addrlen);
+		cout << "Sent frame " << (int)frame.sequence << " (" << translate_frame_type(frame.type)
+			 << ")" << endl;
+		// Check elapsed time
+
+		ssize_t len = recvfrom(sockfd, buffer, sizeof(Frame), 0, (struct sockaddr *)&addr,
+							   (socklen_t *)&addrlen);
+		auto now = chrono::steady_clock::now();
+		auto elapsed_seconds = chrono::duration_cast<chrono::seconds>(now - start).count();
+
+		if (len > 0) {
+			// Received a package, check if it is what was expected
+			Frame *response = reinterpret_cast<Frame *>(buffer);
+			if (response->start_marker == START_MARKER && response->sequence == frame.sequence) {
+				// Checks CRC
+				unsigned char crc = calculate_crc(*response);
+				if (crc == response->crc) {
+					cout << "Receive frame " << (int)response->sequence << " ("
+						 << translate_frame_type(response->type) << ")" << endl;
+					if (response->type == TYPE_ACK) {
+						return true;
+					} else {
+						cout << "CRC check failed" << endl;
+					}
+				}
+			}
+
+			// Timout
+			if (elapsed_seconds >= timeout_seconds) {
+				cout << "Own timeout reached, no valid response." << endl;
+				return false;
+			}
+		}
+	}
+	return false;
 }
 
 bool receive_frame_with_timeout(int sockfd, struct sockaddr_ll &addr, Frame &frame,
@@ -84,10 +144,6 @@ bool receive_frame_with_timeout(int sockfd, struct sockaddr_ll &addr, Frame &fra
 		ssize_t len =
 			recvfrom(sockfd, buffer, sizeof(Frame), 0, (struct sockaddr *)&addr, &addr_len);
 
-		// Check elapsed time
-		auto now = chrono::steady_clock::now();
-		auto elapsed_seconds = chrono::duration_cast<chrono::seconds>(now - start).count();
-
 		if (len > 0) {
 			// Received a package, check if it is what was expected
 			Frame *response = reinterpret_cast<Frame *>(buffer);
@@ -95,32 +151,24 @@ bool receive_frame_with_timeout(int sockfd, struct sockaddr_ll &addr, Frame &fra
 				// Checks CRC
 				unsigned char crc = calculate_crc(*response);
 				if (crc == response->crc) {
-					// CRC is correct, copies the buffer to the frame structure
-					cout << "Received frame " << (int)response->sequence << " ("
-						 << (int)response->type << ")" << endl;
+					cout << "Receive frame " << (int)response->sequence << " ("
+						 << translate_frame_type(response->type) << ")" << endl;
 					memcpy(&frame, buffer, sizeof(Frame));
 					return true;
 				} else {
-					cerr << "CRC check failed" << endl;
-				}
-			}
-		} else if (len < 0) {
-			if (errno == EAGAIN || errno == EWOULDBLOCK) {
-				// Socket timeout, check own timeout
-				if (elapsed_seconds >= timeout_seconds) {
-					cerr << "Own timeout reached, no valid response." << endl;
+					cout << "CRC error in received frame " << (int)frame.sequence << endl;
+					frame.type = TYPE_NACK;
+					sendto(sockfd, &frame, sizeof(Frame), 0, (struct sockaddr *)&addr, addr_len);
 					return false;
 				}
-				// Keep waiting
-			} else {
-				perror("recvfrom failed");
-				return false;
 			}
 		}
 
+		auto now = chrono::steady_clock::now();
+		auto elapsed_seconds = chrono::duration_cast<chrono::seconds>(now - start).count();
 		// Timout
 		if (elapsed_seconds >= timeout_seconds) {
-			cerr << "Own timeout reached, no valid response." << endl;
+			cout << "Own timeout reached, no valid response." << endl;
 			return false;
 		}
 	}
@@ -145,7 +193,8 @@ void send_ack(int sockfd, struct sockaddr_ll &client_addr, uint8_t sequence) {
 	ack.crc = calculate_crc(ack);
 
 	sendto(sockfd, &ack, sizeof(Frame), 0, (struct sockaddr *)&client_addr, sizeof(client_addr));
-	cout << "Sent frame " << (int)sequence << " (" << (int)ack.type << ")" << endl;
+
+	cout << "Sent frame " << (int)sequence << " (" << translate_frame_type(ack.type) << ")" << endl;
 }
 
 void send_nack(int sockfd, struct sockaddr_ll &client_addr, uint8_t sequence) {
@@ -157,7 +206,8 @@ void send_nack(int sockfd, struct sockaddr_ll &client_addr, uint8_t sequence) {
 	nack.crc = calculate_crc(nack);
 
 	sendto(sockfd, &nack, sizeof(Frame), 0, (struct sockaddr *)&client_addr, sizeof(client_addr));
-	cout << "Sent frame " << (int)sequence << " (" << (int)nack.type << ")" << endl;
+	cout << "Sent frame " << (int)sequence << " (" << translate_frame_type(nack.type) << ")"
+		 << endl;
 }
 
 bool receive_ack(int sockfd, struct sockaddr_ll &addr, uint8_t &ack_sequence, int timeout_seconds) {
@@ -190,7 +240,8 @@ void send_file(int sockfd, struct sockaddr_ll &addr, ifstream &file) {
 			frame.crc = calculate_crc(frame);
 
 			sendto(sockfd, &frame, sizeof(Frame), 0, (struct sockaddr *)&addr, addr_len);
-			cout << "Sent frame " << (int)frame.sequence << " (" << (int)frame.type << ")" << endl;
+			cout << "Sent frame " << (int)frame.sequence << " (" << translate_frame_type(frame.type)
+				 << ")" << endl;
 			next_seq_num = (next_seq_num + 1) % 32;
 		}
 		expected_ack = next_seq_num;
@@ -208,8 +259,8 @@ void send_file(int sockfd, struct sockaddr_ll &addr, ifstream &file) {
 				for (uint8_t i = base; i < WINDOW_SIZE; i = (i + 1) % 32) {
 					Frame &frame = window[i];
 					sendto(sockfd, &frame, sizeof(Frame), 0, (struct sockaddr *)&addr, addr_len);
-					cout << "Resent frame " << (int)frame.sequence << " (" << (int)frame.type << ")"
-						 << endl;
+					cout << "Resent frame " << (int)frame.sequence << " ("
+						 << translate_frame_type(frame.type) << ")" << endl;
 				}
 			}
 		}

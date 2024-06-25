@@ -6,6 +6,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <cstdint>
 #include <cstring>
 #include <iomanip>
 #include <iostream>
@@ -14,10 +15,74 @@
 
 using namespace std;
 
-int main() {
-	int sockfd;
+void handle_list_request(int sockfd, struct sockaddr_ll &addr) {
+	const string directory_path = "./videos";
+	vector<string> files;
+	struct dirent *entry;
+	DIR *dp = opendir(directory_path.c_str());
 
-	sockfd = create_raw_socket();
+	if (dp == nullptr) {
+		perror("opendir");
+		return;
+	}
+
+	while ((entry = readdir(dp))) {
+		if (entry->d_type == DT_REG) {	// Regular file
+			files.emplace_back(entry->d_name);
+		}
+	}
+	closedir(dp);
+
+	uint8_t video_sequence = 0;
+	for (const auto &file : files) {
+		Frame frame = {};
+		frame.start_marker = START_MARKER;
+		frame.length = file.size();
+		frame.sequence = video_sequence;
+		frame.type = TYPE_FILL_DESCRIPTOR;
+		strncpy((char *)frame.data, file.c_str(), frame.length);
+		frame.crc = calculate_crc(frame);
+
+		if (!send_frame_and_receive_ack(sockfd, frame, addr, TIMEOUT_SECONDS)) {
+			cout << "Failed to send file list" << endl;
+			exit(1);
+		}
+		video_sequence = (video_sequence + 1) % WINDOW_SIZE;
+	}
+
+	Frame end_tx_frame = {};
+	end_tx_frame.start_marker = START_MARKER;
+	end_tx_frame.length = 0;
+	end_tx_frame.sequence = 0;
+	end_tx_frame.type = TYPE_END_TX;
+	end_tx_frame.crc = calculate_crc(end_tx_frame);
+
+	send_frame_and_receive_ack(sockfd, end_tx_frame, addr, TIMEOUT_SECONDS);
+}
+
+void handle_download_request(int sockfd, struct sockaddr_ll &addr, const Frame &frame) {
+	string filename((char *)frame.data, frame.length);
+	ifstream file("./videos/" + filename, ios::binary);
+	cout << "./videos/" << filename << endl;
+
+	if (file.is_open()) {
+		send_file(sockfd, addr, file);
+		file.close();
+	} else {
+		cout << "Failed to open file: " << filename << endl;
+		Frame error_frame;
+		error_frame.start_marker = START_MARKER;
+		error_frame.length = 0;
+		error_frame.sequence = 0;
+		error_frame.type = TYPE_ERROR;
+		error_frame.crc = calculate_crc(error_frame);
+
+		send_frame_and_receive_ack(sockfd, error_frame, addr, TIMEOUT_SECONDS);
+	}
+}
+
+int main() {
+	int sockfd = create_raw_socket();
 
 	// Obtain the interface index for the specified network interface
 	const char *interface_name = INTERFACE_NAME;
@@ -43,30 +108,23 @@ int main() {
 
 	socket_config(sockfd, TIMEOUT_SECONDS, interface_index);
 
-	ofstream output_file("received_file.mp4", ios::binary);
-	if (!output_file) {
-		cerr << "Failed to open output file." << endl;
-		return 1;
-	}
+	cout << "Server started, waiting for requests..." << endl;
 
-	uint8_t expected_sequence = 0;
+	struct sockaddr_ll client_addr;
+	Frame frame;
 
 	while (true) {
-		Frame frame;
-		struct sockaddr_ll client_addr;
-
 		if (receive_frame_and_send_ack(sockfd, client_addr, frame, TIMEOUT_SECONDS)) {
-			if (frame.sequence == expected_sequence) {
-				if (frame.type == TYPE_END_TX) {
-					output_file.close();
-					cout << "Received end of transmission frame." << endl;
+			switch (frame.type) {
+				case TYPE_LIST:
+					handle_list_request(sockfd, client_addr);
 					break;
-				} else if (frame.type == TYPE_DATA) {
-					output_file.write((char *)frame.data, frame.length);
-				} else {
-					send_nack(sockfd, client_addr, expected_sequence);
-				}
-				expected_sequence = (expected_sequence + 1) % WINDOW_SIZE;
+				case TYPE_DOWNLOAD:
+					handle_download_request(sockfd, client_addr, frame);
+					break;
+				default:
+					cout << "Unknown frame type received" << endl;
+					break;
 			}
 		}
 	}
