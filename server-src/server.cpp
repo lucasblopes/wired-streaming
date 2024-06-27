@@ -15,7 +15,7 @@
 
 using namespace std;
 
-void handle_list_request(int sockfd, struct sockaddr_ll &addr) {
+void handle_list_request(int sockfd) {
 	const string directory_path = "./videos";
 	vector<string> files;
 	struct dirent *entry;
@@ -43,7 +43,7 @@ void handle_list_request(int sockfd, struct sockaddr_ll &addr) {
 		strncpy((char *)frame.data, file.c_str(), frame.length);
 		frame.crc = calculate_crc(frame);
 
-		if (!send_frame_and_receive_ack(sockfd, frame, addr, TIMEOUT_SECONDS)) {
+		if (!send_frame_and_receive_ack(sockfd, frame, TIMEOUT_SECONDS)) {
 			cout << "Failed to send file list" << endl;
 			exit(1);
 		}
@@ -57,16 +57,16 @@ void handle_list_request(int sockfd, struct sockaddr_ll &addr) {
 	end_tx_frame.type = TYPE_END_TX;
 	end_tx_frame.crc = calculate_crc(end_tx_frame);
 
-	send_frame_and_receive_ack(sockfd, end_tx_frame, addr, TIMEOUT_SECONDS);
+	send_frame_and_receive_ack(sockfd, end_tx_frame, TIMEOUT_SECONDS);
 }
 
-void handle_download_request(int sockfd, struct sockaddr_ll &addr, const Frame &frame) {
+void handle_download_request(int sockfd, const Frame &frame) {
 	string filename((char *)frame.data, frame.length);
 	ifstream file("./videos/" + filename, ios::binary);
 	cout << "./videos/" << filename << endl;
 
 	if (file.is_open()) {
-		send_file(sockfd, addr, file);
+		send_file(sockfd, file);
 		file.close();
 	} else {
 		cout << "Failed to open file: " << filename << endl;
@@ -77,7 +77,7 @@ void handle_download_request(int sockfd, struct sockaddr_ll &addr, const Frame &
 		error_frame.type = TYPE_ERROR;
 		error_frame.crc = calculate_crc(error_frame);
 
-		send_frame_and_receive_ack(sockfd, error_frame, addr, TIMEOUT_SECONDS);
+		send_frame_and_receive_ack(sockfd, error_frame, TIMEOUT_SECONDS);
 	}
 }
 
@@ -110,17 +110,16 @@ int main() {
 
 	cout << "Server started, waiting for requests..." << endl;
 
-	struct sockaddr_ll client_addr;
 	Frame frame;
 
 	while (true) {
-		if (receive_frame_and_send_ack(sockfd, client_addr, frame, TIMEOUT_SECONDS)) {
+		if (receive_frame_and_send_ack(sockfd, frame, TIMEOUT_SECONDS)) {
 			switch (frame.type) {
 				case TYPE_LIST:
-					handle_list_request(sockfd, client_addr);
+					handle_list_request(sockfd);
 					break;
 				case TYPE_DOWNLOAD:
-					handle_download_request(sockfd, client_addr, frame);
+					handle_download_request(sockfd, frame);
 					break;
 				default:
 					cout << "Unknown frame type received" << endl;
