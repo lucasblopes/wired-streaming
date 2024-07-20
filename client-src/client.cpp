@@ -12,17 +12,18 @@
 #include <iostream>
 
 #include "../inc/frame.h"
+#include "../inc/raw-socket.h"
 
 using namespace std;
 
-void receive_file(int sockfd, ofstream &file) {
+void receive_file(int sockfd, ofstream &file, int timeout_seconds) {
 	vector<Frame> window(WINDOW_SIZE);
 	uint8_t expected_sequence = 0;
 	cout << "Receiving file..." << endl;
 
 	while (true) {
 		Frame frame;
-		if (receive_frame_and_send_ack(sockfd, frame, TIMEOUT_SECONDS)) {
+		if (receive_frame_and_send_ack(sockfd, frame, timeout_seconds)) {
 			if (frame.sequence == expected_sequence) {
 				if (frame.type == TYPE_END_TX) {
 					cout << "Received end of transmission frame." << endl;
@@ -38,7 +39,7 @@ void receive_file(int sockfd, ofstream &file) {
 	}
 }
 
-vector<string> list_files(int sockfd) {
+vector<string> list_files(int sockfd, int timeout_seconds) {
 	Frame list_request = {};
 	list_request.start_marker = START_MARKER;
 	list_request.length = 0;
@@ -48,11 +49,11 @@ vector<string> list_files(int sockfd) {
 
 	vector<string> file_list;
 
-	if (send_frame_and_receive_ack(sockfd, list_request, TIMEOUT_SECONDS)) {
+	if (send_frame_and_receive_ack(sockfd, list_request, timeout_seconds)) {
 		uint8_t next_seq_num = 0;
 		while (true) {
 			Frame frame = {};
-			if (receive_frame_and_send_ack(sockfd, frame, TIMEOUT_SECONDS)) {
+			if (receive_frame_and_send_ack(sockfd, frame, timeout_seconds)) {
 				if (frame.type == TYPE_END_TX) {
 					break;
 				}
@@ -69,7 +70,7 @@ vector<string> list_files(int sockfd) {
 	return file_list;
 }
 
-void download_file(int sockfd, const string &filename) {
+void download_file(int sockfd, const string &filename, int timeout_seconds) {
 	Frame frame;
 	frame.start_marker = START_MARKER;
 	frame.length = filename.size();
@@ -78,14 +79,14 @@ void download_file(int sockfd, const string &filename) {
 	strncpy((char *)frame.data, filename.c_str(), frame.length);
 	frame.crc = calculate_crc(frame);
 
-	if (send_frame_and_receive_ack(sockfd, frame, TIMEOUT_SECONDS)) {
+	if (send_frame_and_receive_ack(sockfd, frame, timeout_seconds)) {
 		ofstream file(filename, ios::binary);
 		if (!file.is_open()) {
 			cout << "Failed to open " << filename << endl;
 			return;
 		}
 
-		receive_file(sockfd, file);
+		receive_file(sockfd, file, timeout_seconds);
 		file.close();
 		cout << "File " << filename << " downloaded successfully" << endl;
 	} else {
@@ -94,35 +95,12 @@ void download_file(int sockfd, const string &filename) {
 }
 
 int main() {
-	int sockfd;
-	struct sockaddr_ll address;
-
-	sockfd = create_raw_socket();
-
-	// Obtain the interface index for the specified network interface
-	const char *interfaceName = INTERFACE_NAME;
-	int interface_index = if_nametoindex(interfaceName);
-	if (interface_index == 0) {
-		perror(
-			"Error obtaining interface index: Check if the interface name "
-			"is correct.");
-		exit(1);
-	}
-
-	address.sll_family = AF_PACKET;
-	address.sll_protocol = htons(ETH_P_ALL);
-	address.sll_ifindex = interface_index;
-
-	if (bind(sockfd, (struct sockaddr *)&address, sizeof(address)) == -1) {
-		perror("bind");
-		close(sockfd);
-		exit(EXIT_FAILURE);
-	}
-
-	socket_config(sockfd, TIMEOUT_SECONDS, interface_index);
+	const char *interface_name = INTERFACE_NAME;
+	int timeout_seconds = TIMEOUT_SECONDS;
+	int sockfd = raw_socket_create(interface_name, timeout_seconds);
 
 	cout << "Client started. Listing available files..." << endl;
-	vector<string> file_list = list_files(sockfd);
+	vector<string> file_list = list_files(sockfd, timeout_seconds);
 
 	if (!file_list.empty()) {
 		int choice;
@@ -139,7 +117,7 @@ int main() {
 			}
 		}
 		cout << file_list[choice - 1] << endl;
-		download_file(sockfd, file_list[choice - 1]);
+		download_file(sockfd, file_list[choice - 1], timeout_seconds);
 	} else {
 		cout << "No files available for download" << endl;
 	}

@@ -12,10 +12,11 @@
 #include <iostream>
 
 #include "../inc/frame.h"
+#include "../inc/raw-socket.h"
 
 using namespace std;
 
-void handle_list_request(int sockfd) {
+void handle_list_request(int sockfd, int timeout_seconds) {
 	const string directory_path = "./videos";
 	vector<string> files;
 	struct dirent *entry;
@@ -43,7 +44,7 @@ void handle_list_request(int sockfd) {
 		strncpy((char *)frame.data, file.c_str(), frame.length);
 		frame.crc = calculate_crc(frame);
 
-		if (!send_frame_and_receive_ack(sockfd, frame, TIMEOUT_SECONDS)) {
+		if (!send_frame_and_receive_ack(sockfd, frame, timeout_seconds)) {
 			cout << "Failed to send file list" << endl;
 			exit(1);
 		}
@@ -57,16 +58,16 @@ void handle_list_request(int sockfd) {
 	end_tx_frame.type = TYPE_END_TX;
 	end_tx_frame.crc = calculate_crc(end_tx_frame);
 
-	send_frame_and_receive_ack(sockfd, end_tx_frame, TIMEOUT_SECONDS);
+	send_frame_and_receive_ack(sockfd, end_tx_frame, timeout_seconds);
 }
 
-void handle_download_request(int sockfd, const Frame &frame) {
+void handle_download_request(int sockfd, const Frame &frame, int timeout_seconds) {
 	string filename((char *)frame.data, frame.length);
 	ifstream file("./videos/" + filename, ios::binary);
 	cout << "./videos/" << filename << endl;
 
 	if (file.is_open()) {
-		send_file(sockfd, file);
+		send_file(sockfd, file, timeout_seconds);
 		file.close();
 	} else {
 		cout << "Failed to open file: " << filename << endl;
@@ -77,49 +78,27 @@ void handle_download_request(int sockfd, const Frame &frame) {
 		error_frame.type = TYPE_ERROR;
 		error_frame.crc = calculate_crc(error_frame);
 
-		send_frame_and_receive_ack(sockfd, error_frame, TIMEOUT_SECONDS);
+		send_frame_and_receive_ack(sockfd, error_frame, timeout_seconds);
 	}
 }
 
 int main() {
-	int sockfd = create_raw_socket();
-
-	// Obtain the interface index for the specified network interface
 	const char *interface_name = INTERFACE_NAME;
-	int interface_index = if_nametoindex(interface_name);
-	if (interface_index == 0) {
-		perror(
-			"Error obtaining interface index: Check if the interface name "
-			"is correct.");
-		exit(1);
-	}
-
-	// Set up the socket address structure
-	struct sockaddr_ll address = {};
-	address.sll_family = AF_PACKET;
-	address.sll_protocol = htons(ETH_P_ALL);
-	address.sll_ifindex = interface_index;
-
-	if (bind(sockfd, (struct sockaddr *)&address, sizeof(address)) == -1) {
-		perror("bind");
-		close(sockfd);
-		exit(EXIT_FAILURE);
-	}
-
-	socket_config(sockfd, TIMEOUT_SECONDS, interface_index);
+	int timeout_seconds = TIMEOUT_SECONDS;
+	int sockfd = raw_socket_create(interface_name, timeout_seconds);
 
 	cout << "Server started, waiting for requests..." << endl;
 
 	Frame frame;
 
 	while (true) {
-		if (receive_frame_and_send_ack(sockfd, frame, TIMEOUT_SECONDS)) {
+		if (receive_frame_and_send_ack(sockfd, frame, timeout_seconds)) {
 			switch (frame.type) {
 				case TYPE_LIST:
-					handle_list_request(sockfd);
+					handle_list_request(sockfd, timeout_seconds);
 					break;
 				case TYPE_DOWNLOAD:
-					handle_download_request(sockfd, frame);
+					handle_download_request(sockfd, frame, timeout_seconds);
 					break;
 				default:
 					cout << "Unknown frame type received" << endl;

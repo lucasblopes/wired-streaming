@@ -4,6 +4,7 @@
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include <cstring>
@@ -13,9 +14,6 @@
 
 using namespace std;
 
-// modify if necessary
-#define INTERFACE_NAME "eth0"
-#define TIMEOUT_SECONDS 5
 #define WINDOW_SIZE 5
 #define FRAME_DATA_SIZE 63
 
@@ -41,11 +39,7 @@ struct Frame {
 
 string translate_frame_type(uint8_t type);
 
-int create_raw_socket();
-
 uint8_t calculate_crc(const Frame &frame);
-
-void socket_config(int sockfd, int timeout_seconds, int interface_index);
 
 bool send_frame_and_receive_ack(int sockfd, Frame &frame, int timeout_seconds);
 
@@ -59,6 +53,6 @@ bool receive_ack(int sockfd, uint8_t &ack_sequence, int timeout_seconds);
 
 void send_nack(int sockfd, uint8_t sequence);
 
-void send_file(int sockfd, ifstream &file);
+void send_file(int sockfd, ifstream &file, int timeout_seconds);
 
 #endif

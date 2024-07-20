@@ -45,15 +45,6 @@ string translate_frame_type(uint8_t type) {
 	}
 }
 
-int create_raw_socket() {
-	int sockfd;
-	if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1) {
-		perror("socket");
-		exit(EXIT_FAILURE);
-	}
-	return sockfd;
-}
-
 /* calculates crc8 */
 uint8_t calculate_crc(const Frame &frame) {
 	uint8_t crc = 0;
@@ -65,29 +56,6 @@ uint8_t calculate_crc(const Frame &frame) {
 		crc ^= frame.data[i];
 	}
 	return crc;
-}
-
-/* set timeout limit and promiscuous mode */
-void socket_config(int sockfd, int timeout_seconds, int interface_index) {
-	// set timeout limit
-	struct timeval timeout;
-	timeout.tv_sec = timeout_seconds;
-	timeout.tv_usec = 0;
-	if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
-		perror("setsockopt failed");
-		exit(EXIT_FAILURE);
-	}
-	// Set the socket to promiscuous mode to capture all packets
-	struct packet_mreq mr = {};
-	mr.mr_ifindex = interface_index;
-	mr.mr_type = PACKET_MR_PROMISC;
-
-	if (setsockopt(sockfd, SOL_PACKET, PACKET_ADD_MEMBERSHIP, &mr, sizeof(mr)) == -1) {
-		perror(
-			"setsockopt failed: Ensure the network interface is specified "
-			"correctly");
-		exit(EXIT_FAILURE);
-	}
 }
 
 bool send_frame_and_receive_ack(int sockfd, Frame &frame, int timeout_seconds) {
@@ -214,7 +182,7 @@ bool receive_ack(int sockfd, uint8_t &ack_sequence, int timeout_seconds) {
 	return false;
 }
 
-void send_file(int sockfd, ifstream &file) {
+void send_file(int sockfd, ifstream &file, int timeout_seconds) {
 	vector<Frame> window(WINDOW_SIZE);
 	uint8_t next_seq_num = 0;
 	uint8_t expected_ack;
@@ -242,7 +210,7 @@ void send_file(int sockfd, ifstream &file) {
 
 		uint8_t base = 0;
 		while (last_ack_received < expected_ack - 1) {
-			if (receive_ack(sockfd, last_ack_received, TIMEOUT_SECONDS)) {
+			if (receive_ack(sockfd, last_ack_received, timeout_seconds)) {
 				if (last_ack_received < WINDOW_SIZE) {
 					base = (last_ack_received + 1) % 32;
 				}
@@ -270,7 +238,7 @@ void send_file(int sockfd, ifstream &file) {
 	last_ack_received = 0;
 
 	/* Sent last frame and receive ACK */
-	if (send_frame_and_receive_ack(sockfd, end_frame, TIMEOUT_SECONDS)) {
+	if (send_frame_and_receive_ack(sockfd, end_frame, timeout_seconds)) {
 		cout << "Sent end of transmission frame " << (int)end_frame.sequence << endl;
 	}
 }
