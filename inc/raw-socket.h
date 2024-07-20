@@ -1,6 +1,9 @@
 #ifndef SOCKET_H
 #define SOCKET_H
 
+#include <cstdint>
+#include <iostream>
+
 using namespace std;
 
 // Constants
@@ -24,5 +27,9 @@ void set_socket_timeout(int sockfd, int timeout_seconds);
 
 // Creates and configures a raw socket
 int raw_socket_create(const char *interface_name, int timeout_seconds);
+
+ssize_t safe_send(int sockfd, uint8_t *data, size_t length);
+
+ssize_t safe_recv(int sockfd, uint8_t *buffer, size_t length);
 
 #endif

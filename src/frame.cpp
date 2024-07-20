@@ -18,6 +18,9 @@
 #include <queue>
 #include <vector>
 
+#include "../inc/frame.h"
+#include "../inc/raw-socket.h"
+
 using namespace std;
 
 string translate_frame_type(uint8_t type) {
@@ -60,15 +63,15 @@ uint8_t calculate_crc(const Frame &frame) {
 
 bool send_frame_and_receive_ack(int sockfd, Frame &frame, int timeout_seconds) {
 	auto start = chrono::steady_clock::now();
-	char buffer[sizeof(Frame)] = {0};
+	uint8_t buffer[sizeof(Frame)] = {0};
 
-	send(sockfd, &frame, sizeof(Frame), 0);
+	safe_send(sockfd, reinterpret_cast<uint8_t *>(&frame), sizeof(Frame));
 	cout << "Sent frame " << (int)frame.sequence << " (" << translate_frame_type(frame.type) << ")"
 		 << endl;
 
 	while (true) {
 		// Check elapsed time
-		ssize_t len = recv(sockfd, buffer, sizeof(Frame), 0);
+		ssize_t len = safe_recv(sockfd, buffer, sizeof(Frame));
 		auto now = chrono::steady_clock::now();
 		auto elapsed_seconds = chrono::duration_cast<chrono::seconds>(now - start).count();
 
@@ -101,10 +104,10 @@ bool send_frame_and_receive_ack(int sockfd, Frame &frame, int timeout_seconds) {
 
 bool receive_frame_with_timeout(int sockfd, Frame &frame, int timeout_seconds) {
 	auto start = chrono::steady_clock::now();
-	char buffer[sizeof(Frame)] = {0};
+	uint8_t buffer[sizeof(Frame)] = {0};
 
 	while (true) {
-		ssize_t len = recv(sockfd, buffer, sizeof(Frame), 0);
+		ssize_t len = safe_recv(sockfd, buffer, sizeof(Frame));
 
 		if (len > 0) {
 			// Received a package, check if it is what was expected
@@ -120,7 +123,7 @@ bool receive_frame_with_timeout(int sockfd, Frame &frame, int timeout_seconds) {
 				} else {
 					cout << "CRC error in received frame " << (int)frame.sequence << endl;
 					frame.type = TYPE_NACK;
-					send(sockfd, &frame, sizeof(Frame), 0);
+					safe_send(sockfd, reinterpret_cast<uint8_t *>(&frame), sizeof(Frame));
 					return false;
 				}
 			}
@@ -153,7 +156,7 @@ void send_ack(int sockfd, uint8_t sequence) {
 	ack.type = TYPE_ACK;
 	ack.crc = calculate_crc(ack);
 
-	send(sockfd, &ack, sizeof(Frame), 0);
+	safe_send(sockfd, reinterpret_cast<uint8_t *>(&ack), sizeof(Frame));
 
 	cout << "Sent frame " << (int)sequence << " (" << translate_frame_type(ack.type) << ")" << endl;
 }
@@ -166,7 +169,7 @@ void send_nack(int sockfd, uint8_t sequence) {
 	nack.type = TYPE_NACK;
 	nack.crc = calculate_crc(nack);
 
-	send(sockfd, &nack, sizeof(Frame), 0);
+	safe_send(sockfd, reinterpret_cast<uint8_t *>(&nack), sizeof(Frame));
 	cout << "Sent frame " << (int)sequence << " (" << translate_frame_type(nack.type) << ")"
 		 << endl;
 }
@@ -188,7 +191,6 @@ void send_file(int sockfd, ifstream &file, int timeout_seconds) {
 	uint8_t expected_ack;
 	uint8_t last_ack_received;
 
-	/* mudar para enviar a janela inteira com um send */
 	while (!file.eof()) {
 		next_seq_num = 0;
 		while (next_seq_num < WINDOW_SIZE && !file.eof()) {
@@ -200,7 +202,7 @@ void send_file(int sockfd, ifstream &file, int timeout_seconds) {
 			frame.length = file.gcount();
 			frame.crc = calculate_crc(frame);
 
-			send(sockfd, &frame, sizeof(Frame), 0);
+			safe_send(sockfd, reinterpret_cast<uint8_t *>(&frame), sizeof(Frame));
 			cout << "Sent frame " << (int)frame.sequence << " (" << translate_frame_type(frame.type)
 				 << ")" << endl;
 			next_seq_num = (next_seq_num + 1) % 32;
@@ -219,7 +221,7 @@ void send_file(int sockfd, ifstream &file, int timeout_seconds) {
 					 << endl;
 				for (uint8_t i = base; i < WINDOW_SIZE; i = (i + 1) % 32) {
 					Frame &frame = window[i];
-					send(sockfd, &frame, sizeof(Frame), 0);
+					safe_send(sockfd, reinterpret_cast<uint8_t *>(&frame), sizeof(Frame));
 					cout << "Resent frame " << (int)frame.sequence << " ("
 						 << translate_frame_type(frame.type) << ")" << endl;
 				}

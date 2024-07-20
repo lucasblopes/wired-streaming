@@ -4,12 +4,14 @@
 #include <linux/if_packet.h>
 #include <net/ethernet.h>
 #include <net/if.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include <cstdint>
 #include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <vector>
 
 using namespace std;
 #include "../inc/raw-socket.h"
@@ -85,4 +87,52 @@ int raw_socket_create(const char *interface_name, int timeout_seconds) {
 	set_socket_timeout(sockfd, timeout_seconds);
 
 	return sockfd;
+}
+
+ssize_t safe_send(int sockfd, uint8_t *data, size_t length) {
+	vector<uint8_t> escaped_data;
+	escaped_data.reserve(length * 2);  // Reserve enough space to handle all potential escapes
+
+	for (size_t i = 0; i < length; ++i) {
+		escaped_data.push_back(data[i]);
+		if (data[i] == 0x88 || data[i] == 0x81) {
+			escaped_data.push_back(0xff);  // Add escape byte
+		}
+	}
+
+	// Send the escaped data
+	ssize_t bytes_sent = send(sockfd, escaped_data.data(), escaped_data.size(), 0);
+	if (bytes_sent == -1) {
+		perror("send");
+		// Handle error appropriately
+	}
+
+	return bytes_sent;
+}
+
+ssize_t safe_recv(int sockfd, uint8_t *buffer, size_t length) {
+	vector<uint8_t> received_data(length * 2);	// Allocate enough space for potential escape bytes
+
+	// Receive the data
+	ssize_t bytes_received = recv(sockfd, received_data.data(), received_data.size(), 0);
+	if (bytes_received == -1) {
+		return -1;
+	}
+
+	size_t j = 0;
+	for (ssize_t i = 0; i < bytes_received; ++i) {
+		if (received_data[i] == 0x88 || received_data[i] == 0x81) {
+			if (i + 1 < bytes_received && received_data[i + 1] == 0xff) {
+				// Skip the escape byte
+				++i;
+			}
+		}
+		buffer[j++] = received_data[i];
+		// Ensure we don't overflow the buffer
+		if (j >= length) {
+			break;
+		}
+	}
+
+	return j;  // Return the actual number of bytes after removing escape bytes
 }
