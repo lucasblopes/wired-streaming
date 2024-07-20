@@ -258,6 +258,7 @@ void send_file(int sockfd, ifstream &file) {
 			}
 		}
 	}
+	next_seq_num = next_seq_num % WINDOW_SIZE;
 
 	/* Sends the end of transmission frame */
 	Frame end_frame;

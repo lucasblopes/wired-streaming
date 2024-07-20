@@ -95,7 +95,7 @@ void download_file(int sockfd, const string &filename) {
 
 int main() {
 	int sockfd;
-	struct sockaddr_ll addr;
+	struct sockaddr_ll address;
 
 	sockfd = create_raw_socket();
 
@@ -109,9 +109,15 @@ int main() {
 		exit(1);
 	}
 
-	addr.sll_family = AF_PACKET;
-	addr.sll_protocol = htons(ETH_P_ALL);
-	addr.sll_ifindex = interface_index;
+	address.sll_family = AF_PACKET;
+	address.sll_protocol = htons(ETH_P_ALL);
+	address.sll_ifindex = interface_index;
+
+	if (bind(sockfd, (struct sockaddr *)&address, sizeof(address)) == -1) {
+		perror("bind");
+		close(sockfd);
+		exit(EXIT_FAILURE);
+	}
 
 	socket_config(sockfd, TIMEOUT_SECONDS, interface_index);
 
