@@ -20,7 +20,7 @@
 
 using namespace std;
 
-void receive_file(int sockfd, ofstream &file, int timeout_seconds) {
+bool receive_file(int sockfd, ofstream &file, int timeout_seconds) {
 	uint8_t first_window_seq = 0, last_window_seq = WINDOW_SIZE - 1, expected_sequence = 0;
 	unordered_set<uint8_t> window_frames_written;
 	long int size = 0;
@@ -30,13 +30,19 @@ void receive_file(int sockfd, ofstream &file, int timeout_seconds) {
 
 	mt19937 gen(rd());
 
-	uniform_int_distribution<> dist(1, 100000);
+	uniform_int_distribution<> dist(1, 100);
 
 	while(true) {
 		Frame frame;
 		size_t bytes_received = recv(sockfd, static_cast<void *>(&frame), sizeof(Frame), 0);
 		if (bytes_received < 0 || frame.start_marker != START_MARKER) {
 			continue;
+		}
+
+		// ERROR
+		if (frame.type == TYPE_ERROR) {
+			send_ack(sockfd, frame.sequence);
+			return false;
 		}
 
 		int rand = dist(gen);
@@ -70,7 +76,7 @@ void receive_file(int sockfd, ofstream &file, int timeout_seconds) {
 		} else if (frame.type == TYPE_END_TX) {
 			cout << "Received end of transmition frame" << endl;;
 			send_ack(sockfd, frame.sequence);
-			return;
+			return true;
 		} else {
 			if (window_frames_written.find(frame.sequence) == window_frames_written.end()) {
 				window_frames_written.insert(frame.sequence);
@@ -87,6 +93,7 @@ void receive_file(int sockfd, ofstream &file, int timeout_seconds) {
 			expected_sequence = (expected_sequence + 1) % MAX_SEQ;
 		}
 	}
+	return false;
 }
 
 vector<string> list_files(int sockfd, int timeout_seconds) {
@@ -136,9 +143,14 @@ void download_file(int sockfd, const string &filename, int timeout_seconds) {
 			return;
 		}
 
-		receive_file(sockfd, file, timeout_seconds);
-		file.close();
-		cout << "File " << filename << " downloaded successfully" << endl;
+		if (!receive_file(sockfd, file, timeout_seconds)) {
+			file.close();
+			remove((char*)&filename);
+			cout << "Could not download file" << endl;
+		} else {
+			file.close();
+			cout << "File " << filename << " downloaded successfully" << endl;
+		}
 	} else {
 		cout << "Failed to request download for " << filename << endl;
 	}
