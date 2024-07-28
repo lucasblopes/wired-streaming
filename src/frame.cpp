@@ -48,17 +48,23 @@ string translate_frame_type(uint8_t type) {
 	}
 }
 
-/* calculates crc8 */
+uint32_t calculate_crc32(const void* data, size_t length) {
+    const uint8_t* byte_data = static_cast<const uint8_t*>(data);
+    uint32_t crc = 0xFFFFFFFF;
+
+    for (size_t i = 0; i < length; ++i) {
+        uint8_t table_index = (crc ^ byte_data[i]) & 0xFF;
+        crc = (crc >> 8) ^ crctab[table_index];
+    }
+
+    return crc ^ 0xFFFFFFFF;
+}
+
 uint8_t calculate_crc(const Frame &frame) {
-	uint8_t crc = 0;
-	crc ^= frame.start_marker;	// XOR
-	crc ^= frame.length;
-	crc ^= frame.sequence;
-	crc ^= frame.type;
-	for (int i = 0; i < frame.length; ++i) {
-		crc ^= frame.data[i];
-	}
-	return crc;
+	uint8_t buffer[sizeof(frame) - sizeof(frame.crc)];
+	std::memcpy(buffer, &frame, sizeof(buffer));
+	
+	return calculate_crc32(buffer, sizeof(buffer));
 }
 
 bool send_frame_and_receive_ack(int sockfd, Frame &frame, int timeout_seconds) {
