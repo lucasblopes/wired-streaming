@@ -40,7 +40,7 @@ void handle_list_request(int sockfd, int timeout_seconds) {
 		frame.start_marker = START_MARKER;
 		frame.length = file.size();
 		frame.sequence = video_sequence;
-		frame.type = TYPE_FILL_DESCRIPTOR;
+		frame.type = TYPE_FILE_DESCRIPTOR;
 		strncpy((char *)frame.data, file.c_str(), frame.length);
 		frame.crc = calculate_crc(frame);
 
@@ -48,7 +48,7 @@ void handle_list_request(int sockfd, int timeout_seconds) {
 			cout << "Failed to send file list" << endl;
 			exit(1);
 		}
-		video_sequence = (video_sequence + 1) % WINDOW_SIZE;
+		video_sequence = (video_sequence + 1) % MAX_SEQ;
 	}
 
 	Frame end_tx_frame = {};

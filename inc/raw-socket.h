@@ -7,7 +7,8 @@
 using namespace std;
 
 // Constants
-#define INTERFACE_NAME "eth0"
+// #define INTERFACE_NAME "wlp2s0"
+#define INTERFACE_NAME "enp1s0"
 #define TIMEOUT_SECONDS 5
 
 // Creates a raw socket

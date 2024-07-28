@@ -35,8 +35,8 @@ string translate_frame_type(uint8_t type) {
 			return "DOWNLOAD";
 		case TYPE_SHOWS_ON_SCREEN:
 			return "SHOWS ON SCREEN";
-		case TYPE_FILL_DESCRIPTOR:
-			return "FILL DESCRIPTOR";
+		case TYPE_FILE_DESCRIPTOR:
+			return "FILE DESCRIPTOR";
 		case TYPE_DATA:
 			return "DATA";
 		case TYPE_END_TX:
@@ -70,6 +70,7 @@ bool send_frame_and_receive_ack(int sockfd, Frame &frame, int timeout_seconds) {
 		 << endl;
 
 	while (true) {
+		cout << "Waiting for ack" << endl;
 		// Check elapsed time
 		ssize_t len = safe_recv(sockfd, buffer, sizeof(Frame));
 		auto now = chrono::steady_clock::now();
@@ -78,18 +79,20 @@ bool send_frame_and_receive_ack(int sockfd, Frame &frame, int timeout_seconds) {
 		if (len > 0) {
 			// Received a package, check if it is what was expected
 			Frame *response = reinterpret_cast<Frame *>(buffer);
-			if (response->start_marker == START_MARKER && response->sequence == frame.sequence) {
+			if (response->start_marker == START_MARKER && response->sequence == frame.sequence) { 
 				// Checks CRC
 				unsigned char crc = calculate_crc(*response);
 				if (crc == response->crc) {
-					cout << "Receive frame " << (int)response->sequence << " ("
+					cout << "Received frame " << (int)response->sequence << " ("
 						 << translate_frame_type(response->type) << ")" << endl;
 					if (response->type == TYPE_ACK) {
 						return true;
-					} else {
+					} 
+				} else {
 						cout << "CRC check failed" << endl;
-					}
 				}
+			} else {
+				cout << "Wrong ack sequence received " << endl;
 			}
 
 			// Timout
@@ -116,7 +119,7 @@ bool receive_frame_with_timeout(int sockfd, Frame &frame, int timeout_seconds) {
 				// Checks CRC
 				unsigned char crc = calculate_crc(*response);
 				if (crc == response->crc) {
-					cout << "Receive frame " << (int)response->sequence << " ("
+					cout << "Received frame " << (int)response->sequence << " ("
 						 << translate_frame_type(response->type) << ")" << endl;
 					memcpy(&frame, buffer, sizeof(Frame));
 					return true;
@@ -156,9 +159,9 @@ void send_ack(int sockfd, uint8_t sequence) {
 	ack.type = TYPE_ACK;
 	ack.crc = calculate_crc(ack);
 
-	safe_send(sockfd, reinterpret_cast<uint8_t *>(&ack), sizeof(Frame));
+	send(sockfd, reinterpret_cast<void *>(&ack), sizeof(ack), 0);
 
-	cout << "Sent frame " << (int)sequence << " (" << translate_frame_type(ack.type) << ")" << endl;
+	//cout << "Sent frame " << (int)sequence << " (" << translate_frame_type(ack.type) << ")" << endl;
 }
 
 void send_nack(int sockfd, uint8_t sequence) {
@@ -169,7 +172,7 @@ void send_nack(int sockfd, uint8_t sequence) {
 	nack.type = TYPE_NACK;
 	nack.crc = calculate_crc(nack);
 
-	safe_send(sockfd, reinterpret_cast<uint8_t *>(&nack), sizeof(Frame));
+	send(sockfd, (void *)&nack, sizeof(nack), 0);
 	cout << "Sent frame " << (int)sequence << " (" << translate_frame_type(nack.type) << ")"
 		 << endl;
 }
@@ -180,67 +183,91 @@ bool receive_ack(int sockfd, uint8_t &ack_sequence, int timeout_seconds) {
 		if (frame.type == TYPE_ACK) {
 			ack_sequence = frame.sequence;
 			return true;
+		} else {
+			cout << "Wrong ack squence received" << endl;
 		}
 	}
 	return false;
 }
 
+void send_window(int sockfd, vector<Frame> window) {
+	// cout << "Sending frames ";
+	for (int i = 0; i < window.size(); i++) {
+		// cout << (int)window[i].sequence << " ";
+		send(sockfd, &window[i], sizeof(window[i]), 0);
+		if (window[i].type == TYPE_END_TX) {
+			break;
+		}
+	}
+	// cout << endl;
+}
+
 void send_file(int sockfd, ifstream &file, int timeout_seconds) {
 	vector<Frame> window(WINDOW_SIZE);
-	uint8_t next_seq_num = 0;
-	uint8_t expected_ack;
-	uint8_t last_ack_received;
+	uint8_t seq_num = 255;
+	uint8_t end_tx_seq_num;
+	bool sent_end_tx = false;
 
-	while (!file.eof()) {
-		next_seq_num = 0;
-		while (next_seq_num < WINDOW_SIZE && !file.eof()) {
-			Frame &frame = window[next_seq_num % WINDOW_SIZE];
+	int window_frame_index = 0;
+
+	while (!file.eof() || !sent_end_tx) {
+		// assemble window
+		while (window_frame_index < WINDOW_SIZE && !file.eof()) {
+			seq_num = (seq_num + 1) % MAX_SEQ;
+			Frame &frame = window[window_frame_index];
 			frame.start_marker = START_MARKER;
-			frame.sequence = next_seq_num % WINDOW_SIZE;
+			frame.sequence = seq_num;
 			frame.type = TYPE_DATA;
 			file.read((char *)frame.data, sizeof(frame.data));
 			frame.length = file.gcount();
 			frame.crc = calculate_crc(frame);
-
-			safe_send(sockfd, reinterpret_cast<uint8_t *>(&frame), sizeof(Frame));
-			cout << "Sent frame " << (int)frame.sequence << " (" << translate_frame_type(frame.type)
-				 << ")" << endl;
-			next_seq_num = (next_seq_num + 1) % 32;
+			window_frame_index++;
 		}
-		expected_ack = next_seq_num;
-		last_ack_received = 0;
 
-		uint8_t base = 0;
-		while (last_ack_received < expected_ack - 1) {
-			if (receive_ack(sockfd, last_ack_received, timeout_seconds)) {
-				if (last_ack_received < WINDOW_SIZE) {
-					base = (last_ack_received + 1) % 32;
-				}
-			} else {
-				cout << "NACK, resending frames from " << (int)base << " to " << WINDOW_SIZE
-					 << endl;
-				for (uint8_t i = base; i < WINDOW_SIZE; i = (i + 1) % 32) {
-					Frame &frame = window[i];
-					safe_send(sockfd, reinterpret_cast<uint8_t *>(&frame), sizeof(Frame));
-					cout << "Resent frame " << (int)frame.sequence << " ("
-						 << translate_frame_type(frame.type) << ")" << endl;
+		// send end of transmition frame
+		if (file.eof() && window_frame_index < WINDOW_SIZE) {
+			seq_num = (seq_num + 1) % MAX_SEQ;
+			Frame end_frame;
+			end_frame.start_marker = START_MARKER;
+			end_frame.sequence = seq_num;
+			end_frame.type = TYPE_END_TX;
+			end_frame.length = 0;
+			end_frame.crc = calculate_crc(end_frame);
+
+			window[window_frame_index] = end_frame;
+			sent_end_tx = true;
+			end_tx_seq_num = seq_num;
+		}
+
+		send_window(sockfd, window);
+
+
+		Frame response;
+		while(recv(sockfd, reinterpret_cast<uint8_t *> (&response), sizeof(Frame), 0) < 0 && response.start_marker != START_MARKER);
+
+		if (response.type == TYPE_NACK) {
+			cout << "Received " << translate_frame_type(response.type) << " " << (int)response.sequence << endl;
+			// move window
+			uint8_t nack_seq = response.sequence;
+			uint8_t nack_index;
+			for (int i = 0; i < window.size(); i++) {
+				if (window[i].sequence == nack_seq) {
+					nack_index = i;
+					break;
 				}
 			}
+
+			vector<Frame> new_window(WINDOW_SIZE);
+			for (int i = nack_index, j = 0; i < window.size(); i++, j++) {
+				new_window[j] = window[i];
+				window_frame_index = j + 1;
+			}
+			window = new_window;
+		} else if (response.type == TYPE_ACK && sent_end_tx && response.sequence == end_tx_seq_num) {
+			cout << "Client acknoledged end of transmition" << endl;
+		} else if (response.type == TYPE_ACK && response.sequence == seq_num) {
+			// cout << "Got ack for whole window" << endl;
+			window_frame_index = 0;
 		}
-	}
-	next_seq_num = next_seq_num % WINDOW_SIZE;
-
-	/* Sends the end of transmission frame */
-	Frame end_frame;
-	end_frame.start_marker = START_MARKER;
-	end_frame.sequence = next_seq_num;
-	end_frame.type = TYPE_END_TX;
-	end_frame.length = 0;
-	end_frame.crc = calculate_crc(end_frame);
-	last_ack_received = 0;
-
-	/* Sent last frame and receive ACK */
-	if (send_frame_and_receive_ack(sockfd, end_frame, timeout_seconds)) {
-		cout << "Sent end of transmission frame " << (int)end_frame.sequence << endl;
 	}
 }

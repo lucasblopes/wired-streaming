@@ -5,6 +5,8 @@
 #include <net/if.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <random>
+#include <unordered_set>
 
 #include <cstdint>
 #include <cstring>
@@ -17,24 +19,65 @@
 using namespace std;
 
 void receive_file(int sockfd, ofstream &file, int timeout_seconds) {
-	vector<Frame> window(WINDOW_SIZE);
-	uint8_t expected_sequence = 0;
+	uint8_t first_window_seq = 0, last_window_seq = WINDOW_SIZE - 1, expected_sequence = 0;
+	unordered_set<uint8_t> window_frames_written;
+	long int size = 0;
 	cout << "Receiving file..." << endl;
 
-	while (true) {
+	random_device rd;
+
+	mt19937 gen(rd());
+
+	uniform_int_distribution<> dist(1, 5000);
+
+	while(true) {
 		Frame frame;
-		if (receive_frame_and_send_ack(sockfd, frame, timeout_seconds)) {
-			if (frame.sequence == expected_sequence) {
-				if (frame.type == TYPE_END_TX) {
-					cout << "Received end of transmission frame." << endl;
+		size_t bytes_received = recv(sockfd, static_cast<void *>(&frame), sizeof(Frame), 0);
+		if (bytes_received < 0 || frame.start_marker != START_MARKER) {
+			continue;
+		}
+
+		int rand = dist(gen);
+		if (frame.crc != calculate_crc(frame) || rand == 1) {
+			cout << "crc failed for " << (int)frame.sequence << endl;
+			while (true) {
+				recv(sockfd, static_cast<void *>(&frame), sizeof(Frame), 0);
+				if (frame.sequence == last_window_seq || frame.type == TYPE_END_TX) {
 					break;
-				} else if (frame.type == TYPE_DATA) {
-					file.write((char *)frame.data, frame.length);
-				} else {
-					send_nack(sockfd, expected_sequence);
 				}
-				expected_sequence = (expected_sequence + 1) % WINDOW_SIZE;
 			}
+			window_frames_written.clear();
+			first_window_seq = expected_sequence;
+			last_window_seq = (first_window_seq + WINDOW_SIZE - 1) % MAX_SEQ;
+			send_nack(sockfd, expected_sequence);
+		} else if (frame.sequence != expected_sequence  || rand == 2) {
+			cout << "Wrong sequence, expected " << (int)expected_sequence << " got " << (int)frame.sequence << endl;
+			while (true) {
+				recv(sockfd, static_cast<void *>(&frame), sizeof(Frame), 0);
+				if (frame.sequence == last_window_seq || frame.type == TYPE_END_TX) {
+					break;
+				}
+			}
+			expected_sequence = first_window_seq;
+			send_nack(sockfd, first_window_seq);
+		} else if (frame.type == TYPE_END_TX) {
+			cout << "Received end of transmition frame";
+			send_ack(sockfd, frame.sequence);
+			return;
+		} else {
+			if (window_frames_written.find(frame.sequence) == window_frames_written.end()) {
+				window_frames_written.insert(frame.sequence);
+				file.write((char *)frame.data, frame.length);
+				size+=frame.length;
+			}
+
+			if (frame.sequence == last_window_seq) {
+				send_ack(sockfd, last_window_seq);
+				window_frames_written.clear();
+				first_window_seq = (expected_sequence + 1) % MAX_SEQ;
+				last_window_seq = (first_window_seq + WINDOW_SIZE - 1) % MAX_SEQ;
+			}
+			expected_sequence = (expected_sequence + 1) % MAX_SEQ;
 		}
 	}
 }
@@ -59,7 +102,7 @@ vector<string> list_files(int sockfd, int timeout_seconds) {
 				}
 				if (frame.sequence == next_seq_num) {
 					file_list.push_back((char *)frame.data);
-					next_seq_num = (next_seq_num + 1) % WINDOW_SIZE;
+					next_seq_num = (next_seq_num + 1) % MAX_SEQ;
 				}
 			}
 		}

@@ -6,6 +6,7 @@
 #include <net/if.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #include <cstdint>
 #include <cstring>
@@ -90,20 +91,13 @@ int raw_socket_create(const char *interface_name, int timeout_seconds) {
 }
 
 ssize_t safe_send(int sockfd, uint8_t *data, size_t length) {
-	vector<uint8_t> escaped_data;
-	escaped_data.reserve(length * 2);  // Reserve enough space to handle all potential escapes
-
-	for (size_t i = 0; i < length; ++i) {
-		escaped_data.push_back(data[i]);
-		if (data[i] == 0x88 || data[i] == 0x81) {
-			escaped_data.push_back(0xff);  // Add escape byte
-		}
-	}
-
 	// Send the escaped data
-	ssize_t bytes_sent = send(sockfd, escaped_data.data(), escaped_data.size(), 0);
+	cout << "sending" << endl;
+	ssize_t bytes_sent = send(sockfd, data, length, 0);
+	cout << "sent" << endl;
 	if (bytes_sent == -1) {
-		perror("send");
+
+		cout << "ERROR SENDING" << endl;
 		// Handle error appropriately
 	}
 
@@ -121,12 +115,6 @@ ssize_t safe_recv(int sockfd, uint8_t *buffer, size_t length) {
 
 	size_t j = 0;
 	for (ssize_t i = 0; i < bytes_received; ++i) {
-		if (received_data[i] == 0x88 || received_data[i] == 0x81) {
-			if (i + 1 < bytes_received && received_data[i + 1] == 0xff) {
-				// Skip the escape byte
-				++i;
-			}
-		}
 		buffer[j++] = received_data[i];
 		// Ensure we don't overflow the buffer
 		if (j >= length) {
