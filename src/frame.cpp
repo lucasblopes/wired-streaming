@@ -190,8 +190,30 @@ bool receive_ack(int sockfd, uint8_t &ack_sequence, int timeout_seconds) {
 	return false;
 }
 
+
+bool wait_for_response(int sockfd, Frame &response, int timeout_seconds) {
+    fd_set readfds;
+    struct timeval tv;
+    
+    FD_ZERO(&readfds);
+    FD_SET(sockfd, &readfds);
+    
+    tv.tv_sec = timeout_seconds;
+    tv.tv_usec = 0;
+    
+		while (true) {
+			int result = select(sockfd + 1, &readfds, NULL, NULL, &tv);
+			if (result > 0) {
+					recv(sockfd, &response, sizeof(Frame), 0);
+					if (response.start_marker == START_MARKER) return true;
+			} else {
+					return false;
+			}
+		}
+}
+
 void send_window(int sockfd, vector<Frame> window) {
-	// cout << "Sending frames ";
+	cout << "Sending frames " << (int)window[0].sequence << " to " << (int)window[WINDOW_SIZE - 1].sequence << endl;
 	for (int i = 0; i < window.size(); i++) {
 		// cout << (int)window[i].sequence << " ";
 		send(sockfd, &window[i], sizeof(window[i]), 0);
@@ -206,6 +228,7 @@ void send_file(int sockfd, ifstream &file, int timeout_seconds) {
 	vector<Frame> window(WINDOW_SIZE);
 	uint8_t seq_num = 255;
 	uint8_t end_tx_seq_num;
+	int retries = 0;
 	bool sent_end_tx = false;
 
 	int window_frame_index = 0;
@@ -243,7 +266,20 @@ void send_file(int sockfd, ifstream &file, int timeout_seconds) {
 
 
 		Frame response;
-		while(recv(sockfd, reinterpret_cast<uint8_t *> (&response), sizeof(Frame), 0) < 0 && response.start_marker != START_MARKER);
+		bool response_received = wait_for_response(sockfd, response, timeout_seconds);
+
+		if(!response_received) {
+			cout << "Client timed out, resending window" << endl;
+			retries++;
+			if (retries > MAX_RETIES) {
+				cout << "Max retries reached. Terminating connection" << endl;
+				file.close();
+				return;
+			}
+			continue;
+		} else {
+			retries = 0;
+		}
 
 		if (response.type == TYPE_NACK) {
 			cout << "Received " << translate_frame_type(response.type) << " " << (int)response.sequence << endl;

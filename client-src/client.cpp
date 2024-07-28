@@ -7,6 +7,8 @@
 #include <unistd.h>
 #include <random>
 #include <unordered_set>
+#include <chrono>
+#include <thread>
 
 #include <cstdint>
 #include <cstring>
@@ -28,7 +30,7 @@ void receive_file(int sockfd, ofstream &file, int timeout_seconds) {
 
 	mt19937 gen(rd());
 
-	uniform_int_distribution<> dist(1, 5000);
+	uniform_int_distribution<> dist(1, 100000);
 
 	while(true) {
 		Frame frame;
@@ -38,6 +40,11 @@ void receive_file(int sockfd, ofstream &file, int timeout_seconds) {
 		}
 
 		int rand = dist(gen);
+		int rand2 = dist(gen);
+		if (rand2 == 3) {
+			cout << "Sleeping for 10s" << endl;
+			this_thread::sleep_for(chrono::seconds(10));
+		}
 		if (frame.crc != calculate_crc(frame) || rand == 1) {
 			cout << "crc failed for " << (int)frame.sequence << endl;
 			while (true) {
@@ -61,7 +68,7 @@ void receive_file(int sockfd, ofstream &file, int timeout_seconds) {
 			expected_sequence = first_window_seq;
 			send_nack(sockfd, first_window_seq);
 		} else if (frame.type == TYPE_END_TX) {
-			cout << "Received end of transmition frame";
+			cout << "Received end of transmition frame" << endl;;
 			send_ack(sockfd, frame.sequence);
 			return;
 		} else {

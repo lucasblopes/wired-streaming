@@ -10,6 +10,7 @@ using namespace std;
 // #define INTERFACE_NAME "wlp2s0"
 #define INTERFACE_NAME "enp1s0"
 #define TIMEOUT_SECONDS 5
+#define MAX_RETIES 5
 
 // Creates a raw socket
 int create_socket();
