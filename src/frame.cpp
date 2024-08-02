@@ -48,8 +48,8 @@ uint8_t calculate_crc(const Frame &frame) {
 // Send a frame until gets ack
 void send_frame_and_receive_ack(int sockfd, Frame &frame, int timeout_seconds) {
 	send(sockfd, (void*) &frame, sizeof(frame), 0);
-	cout << "Sent frame " << (int)frame.sequence << " (" << translate_frame_type(frame.type) << ")"
-		 << endl;
+	// cout << "Sent frame " << (int)frame.sequence << " (" << translate_frame_type(frame.type) << ")"
+	// 	 << endl;
 
 	Frame response;
 	while (true) {
@@ -57,7 +57,7 @@ void send_frame_and_receive_ack(int sockfd, Frame &frame, int timeout_seconds) {
 
 		if (!received || (response.type == TYPE_NACK && response.sequence == frame.sequence)) {
 			send(sockfd, (void*) &frame, sizeof(frame), 0);
-			cout << "Resent frame " << (int)frame.sequence << " (" << translate_frame_type(frame.type) << ")"
+			cout << "Resending frame " << (int)frame.sequence << " (" << translate_frame_type(frame.type) << ")"
 		 	<< endl;
 		} else if (response.type == TYPE_ACK && response.sequence == frame.sequence) {
 			return;
@@ -95,6 +95,10 @@ bool receive_frame_with_timeout(int sockfd, Frame &frame, int timeout_seconds) {
 // RECEIVER
 // receive a frame until its right and send ack
 void receive_frame_and_send_ack(int sockfd, uint8_t seq, Frame &frame) {
+	random_device rd;
+	mt19937 gen(rd());
+	uniform_int_distribution<> dist(1, ERRORS_FREQ_LIST);
+
 	while (true) {
 		ssize_t bytes_received = recv(sockfd, (void *) &frame, sizeof(Frame), 0);
 			
@@ -102,7 +106,9 @@ void receive_frame_and_send_ack(int sockfd, uint8_t seq, Frame &frame) {
 			continue;
 		}
 
-		if (frame.crc != calculate_crc(frame) || frame.sequence != seq) {
+		int rand = TEST_ERRORS == 1 ? dist(gen) : -1;
+
+		if (frame.crc != calculate_crc(frame) || frame.sequence != seq || rand == 1) {
 			send_nack(sockfd, seq);
 		} else {
 			send_ack(sockfd, seq);
@@ -134,20 +140,18 @@ void send_nack(int sockfd, uint8_t sequence) {
 	nack.crc = calculate_crc(nack);
 
 	send(sockfd, (void *)&nack, sizeof(nack), 0);
-	cout << "Sent frame " << (int)sequence << " (" << translate_frame_type(nack.type) << ")"
-		 << endl;
+	// cout << "Sent frame " << (int)sequence << " (" << translate_frame_type(nack.type) << ")"
+	// 	 << endl;
 }
 
 void send_window(int sockfd, vector<Frame> window) {
-	cout << "Sending frames " << (int)window[0].sequence << " to " << (int)window[WINDOW_SIZE - 1].sequence << endl;
+	//cout << "Sending frames " << (int)window[0].sequence << " to " << (int)window[WINDOW_SIZE - 1].sequence << endl;
 	for (size_t i = 0; i < window.size(); i++) {
-		// cout << (int)window[i].sequence << " ";
 		send(sockfd, &window[i], sizeof(window[i]), 0);
 		if (window[i].type == TYPE_END_TX) {
 			break;
 		}
 	}
-	// cout << endl;
 }
 
 void send_file(int sockfd, ifstream &file, int timeout_seconds) {
@@ -192,12 +196,10 @@ void send_file(int sockfd, ifstream &file, int timeout_seconds) {
 
 
 		Frame response;
-		// bool response_received = wait_for_response(sockfd, response, timeout_seconds);
-
 		bool response_received = receive_frame_with_timeout(sockfd, response, timeout_seconds);
 
 		if(!response_received) {
-			cout << "Client timed out, resending window" << endl;
+			cout << "Resending window" << endl;
 			retries++;
 			if (retries > MAX_RETIES) {
 				cout << "Max retries reached. Terminating connection" << endl;
@@ -210,7 +212,7 @@ void send_file(int sockfd, ifstream &file, int timeout_seconds) {
 		}
 
 		if (response.type == TYPE_NACK) {
-			cout << "Received " << translate_frame_type(response.type) << " " << (int)response.sequence << endl;
+			// cout << "Received " << translate_frame_type(response.type) << " " << (int)response.sequence << endl;
 			// move window
 			uint8_t nack_seq = response.sequence;
 			uint8_t nack_index;
@@ -228,7 +230,7 @@ void send_file(int sockfd, ifstream &file, int timeout_seconds) {
 			}
 			window = new_window;
 		} else if (response.type == TYPE_ACK && sent_end_tx && response.sequence == end_tx_seq_num) {
-			cout << "Client acknoledged end of transmition" << endl;
+			// cout << "Client acknoledged end of transmition" << endl;
 		} else if (response.type == TYPE_ACK && response.sequence == seq_num) {
 			// cout << "Got ack for whole window" << endl;
 			window_frame_index = 0;

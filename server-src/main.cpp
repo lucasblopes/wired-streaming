@@ -7,7 +7,7 @@ int main() {
 	int timeout_seconds = TIMEOUT_SECONDS;
 	int sockfd = raw_socket_create(interface_name, timeout_seconds);
 
-	cout << "Server started, waiting for requests..." << endl;
+	cout << "Server started" << endl;
 
 	Frame request;
 

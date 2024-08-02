@@ -9,7 +9,13 @@ void handle_list_request(int sockfd, int timeout_seconds) {
 	DIR *dp = opendir(directory_path.c_str());
 
 	if (dp == nullptr) {
-		perror("opendir");
+		Frame frame = {};
+		frame.start_marker = START_MARKER;
+		frame.length = 0;
+		frame.sequence = 0;
+		frame.type = TYPE_ERROR;
+		frame.crc = calculate_crc(frame);
+		send_frame_and_receive_ack(sockfd, frame, timeout_seconds);
 		return;
 	}
 
@@ -42,7 +48,6 @@ void handle_list_request(int sockfd, int timeout_seconds) {
 	end_tx_frame.crc = calculate_crc(end_tx_frame);
 
 	send_frame_and_receive_ack(sockfd, end_tx_frame, timeout_seconds);
-  cout << "Got ack for list" << endl;
 }
 
 void handle_download_request(int sockfd, const Frame &frame, int timeout_seconds) {
@@ -67,6 +72,7 @@ void handle_download_request(int sockfd, const Frame &frame, int timeout_seconds
 }
 
 void listen_for_requests(int sockfd, Frame &request) {
+	cout << "Listening for requests..." << endl;
 	while (true) {
 		ssize_t bytes_received = recv(sockfd, (void*) &request, sizeof(Frame), 0);
 		if (bytes_received > 0 && request.start_marker == START_MARKER) {
