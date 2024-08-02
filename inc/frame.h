@@ -109,18 +109,28 @@ string translate_frame_type(uint8_t type);
 
 uint8_t calculate_crc(const Frame &frame);
 
-bool send_frame_and_receive_ack(int sockfd, Frame &frame, int timeout_seconds);
 
+/*FUNCTIONS TO SEND DATA*/
+
+// send data frame until gets ack
+void send_frame_and_receive_ack(int sockfd, Frame &frame, int timeout_seconds);
+
+// receive response frame
 bool receive_frame_with_timeout(int sockfd, Frame &frame, int timeout_seconds);
 
-bool receive_frame_and_send_ack(int sockfd, Frame &frame, int timeout_seconds);
+// send a file using sliding window
+void send_file(int sockfd, ifstream &file, int timeout_seconds);
+
+// ===================================================
+// ===================================================
+
+/*FUNCTIONS TO RECEIVE DATA*/
+
+// receive data, send nack until right
+void receive_frame_and_send_ack(int sockfd, uint8_t seq, Frame &frame);
 
 void send_ack(int sockfd, uint8_t sequence);
 
-bool receive_ack(int sockfd, uint8_t &ack_sequence, int timeout_seconds);
-
 void send_nack(int sockfd, uint8_t sequence);
-
-void send_file(int sockfd, ifstream &file, int timeout_seconds);
 
 #endif

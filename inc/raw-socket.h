@@ -7,9 +7,9 @@
 using namespace std;
 
 // Constants
-// #define INTERFACE_NAME "wlp2s0"
+//#define INTERFACE_NAME "wlp2s0"
 #define INTERFACE_NAME "enp1s0"
-#define TIMEOUT_SECONDS 5
+#define TIMEOUT_SECONDS 10
 #define MAX_RETIES 5
 
 // Creates a raw socket
@@ -29,9 +29,5 @@ void set_socket_timeout(int sockfd, int timeout_seconds);
 
 // Creates and configures a raw socket
 int raw_socket_create(const char *interface_name, int timeout_seconds);
-
-ssize_t safe_send(int sockfd, uint8_t *data, size_t length);
-
-ssize_t safe_recv(int sockfd, uint8_t *buffer, size_t length);
 
 #endif

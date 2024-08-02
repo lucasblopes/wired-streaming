@@ -67,74 +67,41 @@ uint8_t calculate_crc(const Frame &frame) {
 	return calculate_crc32(buffer, sizeof(buffer));
 }
 
-bool send_frame_and_receive_ack(int sockfd, Frame &frame, int timeout_seconds) {
-	auto start = chrono::steady_clock::now();
-	uint8_t buffer[sizeof(Frame)] = {0};
-
-	safe_send(sockfd, reinterpret_cast<uint8_t *>(&frame), sizeof(Frame));
+// SENDER
+// Send a frame until gets ack
+void send_frame_and_receive_ack(int sockfd, Frame &frame, int timeout_seconds) {
+	send(sockfd, (void*) &frame, sizeof(frame), 0);
 	cout << "Sent frame " << (int)frame.sequence << " (" << translate_frame_type(frame.type) << ")"
 		 << endl;
 
+	Frame response;
 	while (true) {
-		cout << "Waiting for ack" << endl;
-		// Check elapsed time
-		ssize_t len = safe_recv(sockfd, buffer, sizeof(Frame));
-		auto now = chrono::steady_clock::now();
-		auto elapsed_seconds = chrono::duration_cast<chrono::seconds>(now - start).count();
+		bool received = receive_frame_with_timeout(sockfd, response, timeout_seconds);
 
-		if (len > 0) {
-			// Received a package, check if it is what was expected
-			Frame *response = reinterpret_cast<Frame *>(buffer);
-			if (response->start_marker == START_MARKER && response->sequence == frame.sequence) { 
-				// Checks CRC
-				unsigned char crc = calculate_crc(*response);
-				if (crc == response->crc) {
-					cout << "Received frame " << (int)response->sequence << " ("
-						 << translate_frame_type(response->type) << ")" << endl;
-					if (response->type == TYPE_ACK) {
-						return true;
-					} 
-				} else {
-						cout << "CRC check failed" << endl;
-				}
-			} else {
-				cout << "Wrong ack sequence received " << endl;
-			}
-
-			// Timout
-			if (elapsed_seconds >= timeout_seconds) {
-				cout << "Own timeout reached, no valid response." << endl;
-				return false;
-			}
+		if (!received || (response.type == TYPE_NACK && response.sequence == frame.sequence)) {
+			send(sockfd, (void*) &frame, sizeof(frame), 0);
+			cout << "Resent frame " << (int)frame.sequence << " (" << translate_frame_type(frame.type) << ")"
+		 	<< endl;
+		} else if (response.type == TYPE_ACK && response.sequence == frame.sequence) {
+			return;
 		}
 	}
-	return false;
 }
 
+// SENDER
+// used for receiving acks and nacks
 bool receive_frame_with_timeout(int sockfd, Frame &frame, int timeout_seconds) {
 	auto start = chrono::steady_clock::now();
-	uint8_t buffer[sizeof(Frame)] = {0};
 
 	while (true) {
-		ssize_t len = safe_recv(sockfd, buffer, sizeof(Frame));
+		ssize_t len = recv(sockfd, (void*) &frame, sizeof(Frame), 0);
 
 		if (len > 0) {
 			// Received a package, check if it is what was expected
-			Frame *response = reinterpret_cast<Frame *>(buffer);
-			if (response->start_marker == START_MARKER) {
-				// Checks CRC
-				unsigned char crc = calculate_crc(*response);
-				if (crc == response->crc) {
-					cout << "Received frame " << (int)response->sequence << " ("
-						 << translate_frame_type(response->type) << ")" << endl;
-					memcpy(&frame, buffer, sizeof(Frame));
-					return true;
-				} else {
-					cout << "CRC error in received frame " << (int)frame.sequence << endl;
-					frame.type = TYPE_NACK;
-					safe_send(sockfd, reinterpret_cast<uint8_t *>(&frame), sizeof(Frame));
-					return false;
-				}
+			if (frame.start_marker == START_MARKER) {
+				// cout << "Received frame " << (int)response->sequence << " ("
+				// 		<< translate_frame_type(response->type) << ")" << endl;
+				return true;
 			}
 		}
 
@@ -148,14 +115,25 @@ bool receive_frame_with_timeout(int sockfd, Frame &frame, int timeout_seconds) {
 	}
 }
 
-bool receive_frame_and_send_ack(int sockfd, Frame &frame, int timeout_seconds) {
-	if (receive_frame_with_timeout(sockfd, frame, timeout_seconds)) {
-		uint8_t sequence = frame.sequence;
-		send_ack(sockfd, sequence);
-		return true;
+// RECEIVER
+// receive a frame until its right and send ack
+void receive_frame_and_send_ack(int sockfd, uint8_t seq, Frame &frame) {
+	while (true) {
+		size_t bytes_received = recv(sockfd, (void *) &frame, sizeof(Frame), 0);
+			
+		if (bytes_received < 0 || frame.start_marker != START_MARKER) {
+			continue;
+		}
+
+		if (frame.crc != calculate_crc(frame) || frame.sequence != seq) {
+			send_nack(sockfd, seq);
+		} else {
+			send_ack(sockfd, seq);
+			break;
+		}
 	}
-	return false;
 }
+
 
 void send_ack(int sockfd, uint8_t sequence) {
 	Frame ack;
@@ -181,41 +159,6 @@ void send_nack(int sockfd, uint8_t sequence) {
 	send(sockfd, (void *)&nack, sizeof(nack), 0);
 	cout << "Sent frame " << (int)sequence << " (" << translate_frame_type(nack.type) << ")"
 		 << endl;
-}
-
-bool receive_ack(int sockfd, uint8_t &ack_sequence, int timeout_seconds) {
-	Frame frame;
-	if (receive_frame_with_timeout(sockfd, frame, timeout_seconds)) {
-		if (frame.type == TYPE_ACK) {
-			ack_sequence = frame.sequence;
-			return true;
-		} else {
-			cout << "Wrong ack squence received" << endl;
-		}
-	}
-	return false;
-}
-
-
-bool wait_for_response(int sockfd, Frame &response, int timeout_seconds) {
-    fd_set readfds;
-    struct timeval tv;
-    
-    FD_ZERO(&readfds);
-    FD_SET(sockfd, &readfds);
-    
-    tv.tv_sec = timeout_seconds;
-    tv.tv_usec = 0;
-    
-		while (true) {
-			int result = select(sockfd + 1, &readfds, NULL, NULL, &tv);
-			if (result > 0) {
-					recv(sockfd, &response, sizeof(Frame), 0);
-					if (response.start_marker == START_MARKER) return true;
-			} else {
-					return false;
-			}
-		}
 }
 
 void send_window(int sockfd, vector<Frame> window) {
@@ -272,7 +215,9 @@ void send_file(int sockfd, ifstream &file, int timeout_seconds) {
 
 
 		Frame response;
-		bool response_received = wait_for_response(sockfd, response, timeout_seconds);
+		// bool response_received = wait_for_response(sockfd, response, timeout_seconds);
+
+		bool response_received = receive_frame_with_timeout(sockfd, response, timeout_seconds);
 
 		if(!response_received) {
 			cout << "Client timed out, resending window" << endl;

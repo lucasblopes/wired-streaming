@@ -89,38 +89,3 @@ int raw_socket_create(const char *interface_name, int timeout_seconds) {
 
 	return sockfd;
 }
-
-ssize_t safe_send(int sockfd, uint8_t *data, size_t length) {
-	// Send the escaped data
-	cout << "sending" << endl;
-	ssize_t bytes_sent = send(sockfd, data, length, 0);
-	cout << "sent" << endl;
-	if (bytes_sent == -1) {
-
-		cout << "ERROR SENDING" << endl;
-		// Handle error appropriately
-	}
-
-	return bytes_sent;
-}
-
-ssize_t safe_recv(int sockfd, uint8_t *buffer, size_t length) {
-	vector<uint8_t> received_data(length * 2);	// Allocate enough space for potential escape bytes
-
-	// Receive the data
-	ssize_t bytes_received = recv(sockfd, received_data.data(), received_data.size(), 0);
-	if (bytes_received == -1) {
-		return -1;
-	}
-
-	size_t j = 0;
-	for (ssize_t i = 0; i < bytes_received; ++i) {
-		buffer[j++] = received_data[i];
-		// Ensure we don't overflow the buffer
-		if (j >= length) {
-			break;
-		}
-	}
-
-	return j;  // Return the actual number of bytes after removing escape bytes
-}

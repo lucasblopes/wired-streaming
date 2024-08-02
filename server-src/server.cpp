@@ -34,27 +34,24 @@ void handle_list_request(int sockfd, int timeout_seconds) {
 	}
 	closedir(dp);
 
-	uint8_t video_sequence = 0;
+	uint8_t seq = 0;
 	for (const auto &file : files) {
 		Frame frame = {};
 		frame.start_marker = START_MARKER;
 		frame.length = file.size();
-		frame.sequence = video_sequence;
+		frame.sequence = seq;
 		frame.type = TYPE_FILE_DESCRIPTOR;
 		strncpy((char *)frame.data, file.c_str(), frame.length);
 		frame.crc = calculate_crc(frame);
 
-		if (!send_frame_and_receive_ack(sockfd, frame, timeout_seconds)) {
-			cout << "Failed to send file list" << endl;
-			exit(1);
-		}
-		video_sequence = (video_sequence + 1) % MAX_SEQ;
+		send_frame_and_receive_ack(sockfd, frame, timeout_seconds);
+		seq = (seq + 1) % MAX_SEQ;
 	}
 
 	Frame end_tx_frame = {};
 	end_tx_frame.start_marker = START_MARKER;
 	end_tx_frame.length = 0;
-	end_tx_frame.sequence = 0;
+	end_tx_frame.sequence = seq;
 	end_tx_frame.type = TYPE_END_TX;
 	end_tx_frame.crc = calculate_crc(end_tx_frame);
 
@@ -82,6 +79,15 @@ void handle_download_request(int sockfd, const Frame &frame, int timeout_seconds
 	}
 }
 
+void listen_for_requests(int sockfd, Frame &request) {
+	while (true) {
+		size_t bytes_received = recv(sockfd, (void*) &request, sizeof(Frame), 0);
+		if (bytes_received > 0 && request.start_marker == START_MARKER) {
+			return;
+		}
+	}
+}
+
 int main() {
 	const char *interface_name = INTERFACE_NAME;
 	int timeout_seconds = TIMEOUT_SECONDS;
@@ -89,21 +95,22 @@ int main() {
 
 	cout << "Server started, waiting for requests..." << endl;
 
-	Frame frame;
+	Frame request;
 
 	while (true) {
-		if (receive_frame_and_send_ack(sockfd, frame, timeout_seconds)) {
-			switch (frame.type) {
-				case TYPE_LIST:
-					handle_list_request(sockfd, timeout_seconds);
-					break;
-				case TYPE_DOWNLOAD:
-					handle_download_request(sockfd, frame, timeout_seconds);
-					break;
-				default:
-					cout << "Unknown frame type received" << endl;
-					break;
-			}
+		listen_for_requests(sockfd, request);
+		switch (request.type) {
+			case TYPE_LIST:
+				send_ack(sockfd, request.sequence);
+				handle_list_request(sockfd, timeout_seconds);
+				break;
+			case TYPE_DOWNLOAD:
+				send_ack(sockfd, request.sequence);
+				handle_download_request(sockfd, request, timeout_seconds);
+				break;
+			default:
+				cout << "Invalid request received" << endl;
+				break;
 		}
 	}
 
