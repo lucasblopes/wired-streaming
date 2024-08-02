@@ -48,23 +48,22 @@ string translate_frame_type(uint8_t type) {
 	}
 }
 
-uint32_t calculate_crc32(const void* data, size_t length) {
-    const uint8_t* byte_data = static_cast<const uint8_t*>(data);
-    uint32_t crc = 0xFFFFFFFF;
+uint32_t calculate_crc8(const uint8_t* buf, size_t size) {
+    size_t i;
+    uint8_t crc8 = 0;
 
-    for (size_t i = 0; i < length; ++i) {
-        uint8_t table_index = (crc ^ byte_data[i]) & 0xFF;
-        crc = (crc >> 8) ^ crctab[table_index];
+    for (i = 0; i < size; i++) {
+        crc8 = crc8_table[crc8 ^ buf[i]];
     }
 
-    return crc ^ 0xFFFFFFFF;
+    return crc8;
 }
 
 uint8_t calculate_crc(const Frame &frame) {
 	uint8_t buffer[sizeof(frame) - sizeof(frame.crc)];
 	std::memcpy(buffer, &frame, sizeof(buffer));
 	
-	return calculate_crc32(buffer, sizeof(buffer));
+	return calculate_crc8(buffer, sizeof(buffer));
 }
 
 // SENDER
