@@ -1,22 +1,4 @@
-#include <arpa/inet.h>
-#include <dirent.h>
-#include <linux/if_packet.h>
-#include <net/ethernet.h>
-#include <net/if.h>
-#include <sys/socket.h>
-#include <unistd.h>
-#include <random>
-#include <unordered_set>
-#include <chrono>
-#include <thread>
-
-#include <cstdint>
-#include <cstring>
-#include <iomanip>
-#include <iostream>
-
-#include "../inc/frame.h"
-#include "../inc/raw-socket.h"
+#include "../inc/client.h"
 
 using namespace std;
 
@@ -140,36 +122,4 @@ void download_file(int sockfd, const string &filename, int timeout_seconds) {
 		cout << "File " << filename << " downloaded successfully" << endl;
 	}
 	
-}
-
-int main() {
-	const char *interface_name = INTERFACE_NAME;
-	int timeout_seconds = TIMEOUT_SECONDS;
-	int sockfd = raw_socket_create(interface_name, timeout_seconds);
-
-	cout << "Client started. Listing available files..." << endl;
-	vector<string> file_list = list_files(sockfd, timeout_seconds);
-
-	if (!file_list.empty()) {
-		int choice;
-		while (true) {
-			cout << "Enter the number of the file you want to download: " << endl;
-			for (size_t i = 0; i < file_list.size(); ++i) {
-				cout << i + 1 << ": " << file_list[i] << endl;
-			}
-			cin >> choice;
-			if (choice > 0 && choice <= (int)file_list.size()) {
-				break;
-			} else {
-				cout << "Invalid choice. Try again:" << endl;
-			}
-		}
-		cout << file_list[choice - 1] << endl;
-		download_file(sockfd, file_list[choice - 1], timeout_seconds);
-	} else {
-		cout << "No files available for download" << endl;
-	}
-
-	close(sockfd);
-	return 0;
 }

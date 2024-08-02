@@ -1,18 +1,4 @@
-#include <arpa/inet.h>
-#include <dirent.h>
-#include <linux/if_packet.h>
-#include <net/ethernet.h>
-#include <net/if.h>
-#include <sys/socket.h>
-#include <unistd.h>
-
-#include <cstdint>
-#include <cstring>
-#include <iomanip>
-#include <iostream>
-
-#include "../inc/frame.h"
-#include "../inc/raw-socket.h"
+#include "../inc/server.h"
 
 using namespace std;
 
@@ -56,6 +42,7 @@ void handle_list_request(int sockfd, int timeout_seconds) {
 	end_tx_frame.crc = calculate_crc(end_tx_frame);
 
 	send_frame_and_receive_ack(sockfd, end_tx_frame, timeout_seconds);
+  cout << "Got ack for list" << endl;
 }
 
 void handle_download_request(int sockfd, const Frame &frame, int timeout_seconds) {
@@ -86,34 +73,4 @@ void listen_for_requests(int sockfd, Frame &request) {
 			return;
 		}
 	}
-}
-
-int main() {
-	const char *interface_name = INTERFACE_NAME;
-	int timeout_seconds = TIMEOUT_SECONDS;
-	int sockfd = raw_socket_create(interface_name, timeout_seconds);
-
-	cout << "Server started, waiting for requests..." << endl;
-
-	Frame request;
-
-	while (true) {
-		listen_for_requests(sockfd, request);
-		switch (request.type) {
-			case TYPE_LIST:
-				send_ack(sockfd, request.sequence);
-				handle_list_request(sockfd, timeout_seconds);
-				break;
-			case TYPE_DOWNLOAD:
-				send_ack(sockfd, request.sequence);
-				handle_download_request(sockfd, request, timeout_seconds);
-				break;
-			default:
-				cout << "Invalid request received" << endl;
-				break;
-		}
-	}
-
-	close(sockfd);
-	return 0;
 }
