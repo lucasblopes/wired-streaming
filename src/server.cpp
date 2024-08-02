@@ -68,7 +68,7 @@ void handle_download_request(int sockfd, const Frame &frame, int timeout_seconds
 
 void listen_for_requests(int sockfd, Frame &request) {
 	while (true) {
-		size_t bytes_received = recv(sockfd, (void*) &request, sizeof(Frame), 0);
+		ssize_t bytes_received = recv(sockfd, (void*) &request, sizeof(Frame), 0);
 		if (bytes_received > 0 && request.start_marker == START_MARKER) {
 			return;
 		}

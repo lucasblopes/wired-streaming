@@ -2,7 +2,7 @@
 
 using namespace std;
 
-bool receive_file(int sockfd, ofstream &file, int timeout_seconds) {
+bool receive_file(int sockfd, ofstream &file) {
 	uint8_t first_window_seq = 0, last_window_seq = WINDOW_SIZE - 1, expected_sequence = 0;
 	unordered_set<uint8_t> window_frames_written;
 	long int size = 0;
@@ -16,8 +16,8 @@ bool receive_file(int sockfd, ofstream &file, int timeout_seconds) {
 
 	while(true) {
 		Frame frame;
-		size_t bytes_received = recv(sockfd, static_cast<void *>(&frame), sizeof(Frame), 0);
-		if (bytes_received < 0 || frame.start_marker != START_MARKER) {
+		ssize_t bytes_received = recv(sockfd, static_cast<void *>(&frame), sizeof(Frame), 0);
+		if (bytes_received < 0ll || frame.start_marker != START_MARKER) {
 			continue;
 		}
 
@@ -28,13 +28,8 @@ bool receive_file(int sockfd, ofstream &file, int timeout_seconds) {
 		}
 
 		int rand = dist(gen);
-		int rand2 = dist(gen);
 		rand = -1;
-		rand2 = -1;
-		if (rand2 == 3) {
-			cout << "Sleeping for 10s" << endl;
-			this_thread::sleep_for(chrono::seconds(10));
-		}
+
 		if (frame.crc != calculate_crc(frame) || frame.sequence != expected_sequence || rand == 1) {
 			// jogar fora o resto da janela
 			while (true) {
@@ -104,7 +99,6 @@ void download_file(int sockfd, const string &filename, int timeout_seconds) {
 	strncpy((char *)frame.data, filename.c_str(), frame.length);
 	frame.crc = calculate_crc(frame);
 
-
 	ofstream file(filename, ios::binary);
 	if (!file.is_open()) {
 		cout << "Failed to create file " << filename << endl;
@@ -113,7 +107,7 @@ void download_file(int sockfd, const string &filename, int timeout_seconds) {
 
 	send_frame_and_receive_ack(sockfd, frame, timeout_seconds);
 	
-	if (!receive_file(sockfd, file, timeout_seconds)) {
+	if (!receive_file(sockfd, file)) {
 		file.close();
 		remove((char*)&filename);
 		cout << "Could not download file" << endl;

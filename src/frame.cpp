@@ -1,26 +1,5 @@
 #include "../inc/frame.h"
 
-#include <arpa/inet.h>
-#include <dirent.h>
-#include <linux/if_packet.h>
-#include <net/ethernet.h>
-#include <net/if.h>
-#include <sys/socket.h>
-#include <unistd.h>
-
-#include <chrono>
-#include <condition_variable>
-#include <cstdint>
-#include <cstring>
-#include <iomanip>
-#include <iostream>
-#include <mutex>
-#include <queue>
-#include <vector>
-
-#include "../inc/frame.h"
-#include "../inc/raw-socket.h"
-
 using namespace std;
 
 string translate_frame_type(uint8_t type) {
@@ -49,10 +28,9 @@ string translate_frame_type(uint8_t type) {
 }
 
 uint32_t calculate_crc8(const uint8_t* buf, size_t size) {
-    size_t i;
     uint8_t crc8 = 0;
 
-    for (i = 0; i < size; i++) {
+    for (size_t i = 0; i < size; i++) {
         crc8 = crc8_table[crc8 ^ buf[i]];
     }
 
@@ -118,7 +96,7 @@ bool receive_frame_with_timeout(int sockfd, Frame &frame, int timeout_seconds) {
 // receive a frame until its right and send ack
 void receive_frame_and_send_ack(int sockfd, uint8_t seq, Frame &frame) {
 	while (true) {
-		size_t bytes_received = recv(sockfd, (void *) &frame, sizeof(Frame), 0);
+		ssize_t bytes_received = recv(sockfd, (void *) &frame, sizeof(Frame), 0);
 			
 		if (bytes_received < 0 || frame.start_marker != START_MARKER) {
 			continue;
@@ -162,7 +140,7 @@ void send_nack(int sockfd, uint8_t sequence) {
 
 void send_window(int sockfd, vector<Frame> window) {
 	cout << "Sending frames " << (int)window[0].sequence << " to " << (int)window[WINDOW_SIZE - 1].sequence << endl;
-	for (int i = 0; i < window.size(); i++) {
+	for (size_t i = 0; i < window.size(); i++) {
 		// cout << (int)window[i].sequence << " ";
 		send(sockfd, &window[i], sizeof(window[i]), 0);
 		if (window[i].type == TYPE_END_TX) {
@@ -236,7 +214,7 @@ void send_file(int sockfd, ifstream &file, int timeout_seconds) {
 			// move window
 			uint8_t nack_seq = response.sequence;
 			uint8_t nack_index;
-			for (int i = 0; i < window.size(); i++) {
+			for (size_t i = 0; i < window.size(); i++) {
 				if (window[i].sequence == nack_seq) {
 					nack_index = i;
 					break;
@@ -244,7 +222,7 @@ void send_file(int sockfd, ifstream &file, int timeout_seconds) {
 			}
 
 			vector<Frame> new_window(WINDOW_SIZE);
-			for (int i = nack_index, j = 0; i < window.size(); i++, j++) {
+			for (size_t i = nack_index, j = 0; i < window.size(); i++, j++) {
 				new_window[j] = window[i];
 				window_frame_index = j + 1;
 			}

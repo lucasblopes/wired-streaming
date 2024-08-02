@@ -23,7 +23,7 @@
 #include "../inc/frame.h"
 #include "../inc/raw-socket.h"
 
-bool receive_file(int sockfd, ofstream &file, int timeout_seconds);
+bool receive_file(int sockfd, ofstream &file);
 
 vector<string> list_files(int sockfd, int timeout_seconds);
 
