@@ -17,7 +17,7 @@ int main() {
 		switch (request.type) {
 			case TYPE_LIST:
 				send_ack(sockfd, request.sequence);
-				cout << "Got list request";
+				cout << "Got list request" << endl;
 				handle_list_request(sockfd, timeout_seconds);
 				break;
 			case TYPE_DOWNLOAD:
