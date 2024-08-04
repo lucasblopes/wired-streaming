@@ -139,7 +139,6 @@ void send_file(int sockfd, ifstream &file, int timeout_seconds) {
 			if (sent_end_tx) {
 				got_end_ack = true;
 			}
-			cout << "got ack" << endl;
 		}
 	}
 
