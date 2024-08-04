@@ -3,7 +3,6 @@
 
 /*INTERFACE CONFIGS*/
 #define SHOW_LOGS 1
-#define START_PLAYER 0
 
 /*FRAME CONFIGS*/
 #define WINDOW_SIZE 5
