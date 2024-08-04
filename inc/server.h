@@ -14,8 +14,9 @@
 #include <iomanip>
 #include <iostream>
 
-#include "../inc/frame.h"
-#include "../inc/raw-socket.h"
+#include "frame.h"
+#include "raw-socket.h"
+#include "config.h"
 
 using namespace std;
 

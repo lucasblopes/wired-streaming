@@ -20,11 +20,12 @@
 #include <iomanip>
 #include <iostream>
 
-#include "../inc/frame.h"
-#include "../inc/raw-socket.h"
+#include "frame.h"
+#include "raw-socket.h"
+#include "config.h"
 
-bool receive_file(int sockfd, ofstream &file);
-
+// Request files available for download in server and print them
 vector<string> list_files(int sockfd, int timeout_seconds);
 
+// Download file from server
 void download_file(int sockfd, const string &filename, int timeout_seconds);

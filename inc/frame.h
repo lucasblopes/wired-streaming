@@ -10,6 +10,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <random>
 #include <fstream> 
 #include <chrono>
 #include <condition_variable>
@@ -21,14 +22,11 @@
 #include <queue>
 #include <vector>
 
-#include "../inc/frame.h"
-#include "../inc/raw-socket.h"
+#include "frame.h"
+#include "raw-socket.h"
+#include "config.h"
 
 using namespace std;
-
-#define WINDOW_SIZE 5
-#define FRAME_DATA_SIZE 63
-#define MAX_SEQ 32
 
 #define START_MARKER 0x7E		   // 01111110
 #define TYPE_ACK 0x00			   // 00000
@@ -69,6 +67,8 @@ struct Frame {
 	uint8_t crc;
 };
 
+
+/*HELPERS*/
 string translate_frame_type(uint8_t type);
 
 uint8_t calculate_crc(const Frame &frame);
@@ -82,9 +82,6 @@ void send_frame_and_receive_ack(int sockfd, Frame &frame, int timeout_seconds);
 // receive response frame
 bool receive_frame_with_timeout(int sockfd, Frame &frame, int timeout_seconds);
 
-// send a file using sliding window
-void send_file(int sockfd, ifstream &file, int timeout_seconds);
-
 // ===================================================
 // ===================================================
 
@@ -93,8 +90,10 @@ void send_file(int sockfd, ifstream &file, int timeout_seconds);
 // receive data, send nack until right
 void receive_frame_and_send_ack(int sockfd, uint8_t seq, Frame &frame);
 
+// send ack for frame sequence
 void send_ack(int sockfd, uint8_t sequence);
 
+// send nack for frame sequence
 void send_nack(int sockfd, uint8_t sequence);
 
 #endif

@@ -2,6 +2,7 @@
 
 using namespace std;
 
+/*===== SERVER =====*/
 int main() {
 	const char *interface_name = INTERFACE_NAME;
 	int timeout_seconds = TIMEOUT_SECONDS;
@@ -16,14 +17,16 @@ int main() {
 		switch (request.type) {
 			case TYPE_LIST:
 				send_ack(sockfd, request.sequence);
+				cout << "Got list request";
 				handle_list_request(sockfd, timeout_seconds);
 				break;
 			case TYPE_DOWNLOAD:
 				send_ack(sockfd, request.sequence);
+				cout << "Got download request" << endl;
 				handle_download_request(sockfd, request, timeout_seconds);
 				break;
 			default:
-				cout << "Invalid request received" << endl;
+				if (SHOW_LOGS == 1) cout << "Invalid request received" << endl;
 				break;
 		}
 	}
