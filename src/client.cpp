@@ -17,7 +17,7 @@ void receive_bugged_window(int sockfd, ofstream &file, uint8_t first_seq) {
 	int received = 0;
 	int end_tx_index = INT8_MAX;
 
-	if (SHOW_LOGS == 1) cout << "Receiving bugged window starting from frame " << first_seq << endl;
+	if (SHOW_LOGS == 1) cout << "Receiving bugged window starting from frame " << (int)first_seq << endl;
 	while (received < WINDOW_SIZE) {
 		ssize_t bytes_received = recv(sockfd, (void*) &frame, sizeof(Frame), 0); 
 			if (bytes_received < 0 || frame.start_marker != START_MARKER) {

@@ -53,9 +53,13 @@ void send_frame_and_receive_ack(int sockfd, Frame &frame, int timeout_seconds) {
 	while (true) {
 		bool received = receive_frame_with_timeout(sockfd, response, timeout_seconds);
 
-		if (!received || (response.type == TYPE_NACK && response.sequence == frame.sequence)) {
+		if (!received) {
 			send(sockfd, (void*) &frame, sizeof(frame), 0);
 			if (SHOW_LOGS == 1) cout << "Timed out, resending frame " << (int)frame.sequence << " (" << translate_frame_type(frame.type) << ")"
+		 	<< endl;
+		} else if((response.type == TYPE_NACK && response.sequence == frame.sequence)) {
+			send(sockfd, (void*) &frame, sizeof(frame), 0);
+			if (SHOW_LOGS == 1) cout << "Resending frame " << (int)frame.sequence << " (" << translate_frame_type(frame.type) << ")"
 		 	<< endl;
 		} else if (response.type == TYPE_ACK && response.sequence == frame.sequence) {
 			return;
@@ -133,5 +137,5 @@ void send_nack(int sockfd, uint8_t sequence) {
 	nack.crc = calculate_crc(nack);
 
 	send(sockfd, (void *)&nack, sizeof(nack), 0);
-	if (SHOW_LOGS == 1) cout << "Sent NACK to " << (int)sequence << endl;
+	if (SHOW_LOGS == 1) cout << "Sent NACK to frame " << (int)sequence << endl;
 }
